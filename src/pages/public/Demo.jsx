@@ -1,108 +1,94 @@
 /**
- * Demo.jsx — Showroom de componentes base (Fase 1).
- * Ruta: /demo
- * ELIMINAR o restringir antes de producción.
+ * Demo.jsx — Showroom de componentes base (Fase 1) + catálogo mock (pre-Fase 2).
+ * Ruta: /demo   —   ELIMINAR o restringir antes de producción.
  *
  * Secciones:
- *  1. Sidebar (Admin + Taquillero, ítem activo vs inactivo)
- *  2. Botones
- *  3. Badges — estados de asiento y entrada
- *  4. Spinners — tres tamaños con etiqueta
- *  5. Toasts — cuatro variantes
- *  6. StatCards
- *  7. MovieCards
- *  8. Cards
- *  9. Paleta de colores
+ *  1.  Sidebar          (Admin + Taquillero, ítem activo vs inactivo)
+ *  2.  Botones          (variantes, tamaños, estados)
+ *  3.  Badges           (estados de asiento y entrada)
+ *  4.  Spinners         (tres tamaños con etiqueta)
+ *  5.  Toasts           (cuatro variantes)
+ *  6.  StatCards        (dashboard)
+ *  7.  Catálogo         (6 MovieCards con pósters SVG locales)   ← NUEVO
+ *  8.  Mapa de asientos (visual, 4 estados con leyenda)          ← NUEVO
+ *  9.  Cards
+ *  10. Inputs
+ *  11. Paleta de colores
  */
 
 import { useState } from "react"
 import {
   DollarSign, Ticket, Activity, Users,
   LayoutDashboard, Film, Building2, BarChart3,
-  ShoppingCart, QrCode, History,
-  Settings, MapPin as MapIcon, LogOut,
+  ShoppingCart, QrCode, History, Settings,
+  MapPin as MapIcon, LogOut,
 } from "lucide-react"
 
-import Button        from "@/components/ui/Button"
+import Button           from "@/components/ui/Button"
 import Card, { CardHeader, CardBody } from "@/components/ui/Card"
-import Input         from "@/components/ui/Input"
-import Badge         from "@/components/ui/Badge"
-import Spinner       from "@/components/ui/Spinner"
-import StatCard      from "@/components/StatCard"
-import MovieCard     from "@/components/MovieCard"
-import { useToast }  from "@/components/ui/Toast"
-import { cn }        from "@/utils/cn"
+import Input            from "@/components/ui/Input"
+import Badge            from "@/components/ui/Badge"
+import Spinner          from "@/components/ui/Spinner"
+import StatCard         from "@/components/StatCard"
+import MovieCard        from "@/components/MovieCard"
+import MapaAsientosDemo from "@/components/MapaAsientosDemo"
+import { useToast }     from "@/components/ui/Toast"
+import { cn }           from "@/utils/cn"
 import { PELICULAS_MOCK } from "@/data/peliculas"
 
-// ── Datos del Sidebar de demostración ────────────────────────────────────────
+// ── Datos del Sidebar de demo ─────────────────────────────────────────────────
 const ITEMS_ADMIN = [
-  { icono: <LayoutDashboard />, etiqueta: "Dashboard",    activo: true  },
-  { icono: <Film />,            etiqueta: "Funciones",    activo: false },
-  { icono: <Building2 />,       etiqueta: "Salas",        activo: false },
-  { icono: <Users />,           etiqueta: "Usuarios",     activo: false },
-  { icono: <ShoppingCart />,    etiqueta: "Ventas",       activo: false },
-  { icono: <BarChart3 />,       etiqueta: "Reportes",     activo: false },
-  { icono: <Settings />,        etiqueta: "Configuración",activo: false },
+  { icono: <LayoutDashboard />, etiqueta: "Dashboard",     activo: true  },
+  { icono: <Film />,            etiqueta: "Funciones",     activo: false },
+  { icono: <Building2 />,       etiqueta: "Salas",         activo: false },
+  { icono: <Users />,           etiqueta: "Usuarios",      activo: false },
+  { icono: <ShoppingCart />,    etiqueta: "Ventas",        activo: false },
+  { icono: <BarChart3 />,       etiqueta: "Reportes",      activo: false },
+  { icono: <Settings />,        etiqueta: "Configuración", activo: false },
 ]
-
 const ITEMS_TAQUILLA = [
-  { icono: <ShoppingCart />, etiqueta: "Venta en Taquilla", activo: true  },
-  { icono: <Film />,         etiqueta: "Funciones",         activo: false },
-  { icono: <MapIcon />,      etiqueta: "Mapa de Asientos",  activo: false },
+  { icono: <ShoppingCart />, etiqueta: "Venta en Taquilla",  activo: true  },
+  { icono: <Film />,         etiqueta: "Funciones",          activo: false },
+  { icono: <MapIcon />,      etiqueta: "Mapa de Asientos",   activo: false },
   { icono: <History />,      etiqueta: "Historial de Ventas",activo: false },
-  { icono: <QrCode />,       etiqueta: "Validar Entrada",   activo: false },
+  { icono: <QrCode />,       etiqueta: "Validar Entrada",    activo: false },
 ]
 
-// ── Sidebar de demo (sin router, visual puro) ─────────────────────────────────
+// ── Sidebar interactivo de demo ───────────────────────────────────────────────
 function SidebarDemo({ items, titulo }) {
   const [activo, setActivo] = useState(items.findIndex((i) => i.activo))
-
   return (
     <div className="w-56 bg-degradado-sidebar rounded-sivec overflow-hidden flex flex-col shadow-sidebar select-none">
-      {/* Logo */}
       <div className="flex items-center gap-2 px-4 py-4 border-b border-white/10">
         <div className="w-8 h-8 rounded-lg bg-degradado-violeta flex items-center justify-center shrink-0">
           <Film className="w-4 h-4 text-white" aria-hidden="true" />
         </div>
-        <span className="font-titulo font-extrabold italic text-xl text-white tracking-tight">
-          SIVEC
-        </span>
+        <span className="font-titulo font-extrabold italic text-xl text-white tracking-tight">SIVEC</span>
       </div>
-
-      {/* Rol */}
       <div className="px-4 py-2.5 border-b border-white/10">
-        <span className="text-[11px] font-titulo font-semibold text-primario-claro uppercase tracking-widest">
-          {titulo}
-        </span>
+        <span className="text-[11px] font-titulo font-semibold text-primario-claro uppercase tracking-widest">{titulo}</span>
       </div>
-
-      {/* Items */}
-      <nav className="flex-1 px-3 py-3" aria-label={`Menú ${titulo}`}>
+      <nav className="flex-1 px-3 py-3">
         <ul className="flex flex-col gap-0.5" role="list">
           {items.map((item, idx) => (
             <li key={item.etiqueta}>
               <button
                 onClick={() => setActivo(idx)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl",
-                  "text-sm font-cuerpo font-medium transition-all duration-150 text-left",
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-cuerpo font-medium transition-all duration-150 text-left",
                   idx === activo
                     ? "bg-primario text-white shadow-boton"
                     : "text-gray-400 hover:bg-white/10 hover:text-white"
                 )}
                 aria-current={idx === activo ? "page" : undefined}
               >
-                <span className="w-5 h-5 shrink-0 [&>svg]:w-5 [&>svg]:h-5" aria-hidden="true">
-                  {item.icono}
-                </span>
+                <span className="w-5 h-5 shrink-0 [&>svg]:w-5 [&>svg]:h-5" aria-hidden="true">{item.icono}</span>
                 <span>{item.etiqueta}</span>
               </button>
             </li>
           ))}
         </ul>
       </nav>
-
-      {/* Cerrar Sesión */}
       <div className="px-3 py-3 border-t border-white/10">
         <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-cuerpo font-medium text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-all duration-150">
           <LogOut className="w-5 h-5 shrink-0" aria-hidden="true" />
@@ -114,35 +100,29 @@ function SidebarDemo({ items, titulo }) {
 }
 
 // ── Separador de sección ──────────────────────────────────────────────────────
-function Seccion({ id, titulo, children }) {
+function Seccion({ id, titulo, descripcion, children }) {
   return (
     <section aria-labelledby={id} className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
-        <h2 id={id} className="font-titulo text-xl font-bold text-gray-900 whitespace-nowrap">
-          {titulo}
-        </h2>
+        <h2 id={id} className="font-titulo text-xl font-bold text-gray-900 whitespace-nowrap">{titulo}</h2>
         <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
       </div>
+      {descripcion && <p className="text-sm text-gray-500 font-cuerpo -mt-2">{descripcion}</p>}
       {children}
     </section>
   )
 }
 
-// ── Fila de demo etiquetada ───────────────────────────────────────────────────
 function FilaDemo({ etiqueta, children }) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[11px] font-titulo font-semibold text-gray-400 uppercase tracking-widest">
-        {etiqueta}
-      </p>
-      <div className="flex flex-wrap gap-3 items-center">
-        {children}
-      </div>
+      <p className="text-[11px] font-titulo font-semibold text-gray-400 uppercase tracking-widest">{etiqueta}</p>
+      <div className="flex flex-wrap gap-3 items-center">{children}</div>
     </div>
   )
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
+// ── Página ────────────────────────────────────────────────────────────────────
 export default function Demo() {
   const { toast } = useToast()
   const [cargando, setCargando] = useState(false)
@@ -153,34 +133,10 @@ export default function Demo() {
   }
 
   const TOASTS = [
-    {
-      tipo: "exito",
-      label: "✅ Éxito",
-      variante: "primario",
-      titulo: "¡Compra exitosa!",
-      mensaje: "Tu entrada está lista para usar.",
-    },
-    {
-      tipo: "error",
-      label: "❌ Error",
-      variante: "peligro",
-      titulo: "Pago rechazado",
-      mensaje: "Verifica los datos de tu tarjeta e inténtalo de nuevo.",
-    },
-    {
-      tipo: "advertencia",
-      label: "⚠️ Advertencia",
-      variante: "secundario",
-      titulo: "Reserva por vencer",
-      mensaje: "Te quedan menos de 2 minutos para completar el pago.",
-    },
-    {
-      tipo: "info",
-      label: "ℹ️ Info",
-      variante: "fantasma",
-      titulo: "Asiento ya ocupado",
-      mensaje: "Ese asiento fue tomado. Elige otro disponible.",
-    },
+    { tipo: "exito",       label: "✅ Éxito",       titulo: "¡Compra exitosa!",      mensaje: "Tu entrada está lista para usar."                },
+    { tipo: "error",       label: "❌ Error",        titulo: "Pago rechazado",         mensaje: "Verifica los datos de tu tarjeta e inténtalo."  },
+    { tipo: "advertencia", label: "⚠️ Advertencia",  titulo: "Reserva por vencer",     mensaje: "Te quedan menos de 2 minutos para completar."   },
+    { tipo: "info",        label: "ℹ️ Info",          titulo: "Asiento ya ocupado",     mensaje: "Ese asiento fue tomado. Elige otro disponible." },
   ]
 
   return (
@@ -188,19 +144,15 @@ export default function Demo() {
 
       {/* Encabezado */}
       <div>
-        <h1 className="font-titulo text-3xl font-extrabold text-gray-900 mb-1">
-          Sistema de Diseño SIVEC
-        </h1>
+        <h1 className="font-titulo text-3xl font-extrabold text-gray-900 mb-1">Sistema de Diseño SIVEC</h1>
         <p className="text-gray-500 font-cuerpo text-sm">
-          Demostración de componentes base · Fase 1 · Haz clic en los ítems del Sidebar para ver el hover/activo.
+          Fase 1 (componentes) + datos mock (pre-Fase 2) · <span className="text-primario font-semibold">Solo para aprobación del equipo</span>
         </p>
       </div>
 
       {/* ── 1. SIDEBAR ──────────────────────────────────────────────────── */}
-      <Seccion id="sec-sidebar" titulo="Sidebar del Panel">
-        <p className="text-sm text-gray-500 font-cuerpo -mt-2">
-          Haz clic en cualquier ítem para cambiar cuál está activo (violeta) y ver el efecto hover en los demás.
-        </p>
+      <Seccion id="sec-sidebar" titulo="Sidebar del Panel"
+        descripcion="Haz clic en cualquier ítem para cambiar el estado activo y ver el hover en los demás.">
         <div className="flex flex-wrap gap-8 items-start">
           <div className="flex flex-col gap-2">
             <p className="text-xs font-titulo font-semibold text-gray-500 uppercase tracking-wide">Administrador</p>
@@ -233,7 +185,7 @@ export default function Demo() {
           <Button disabled>Deshabilitado</Button>
           <Button variante="secundario" disabled>Secundario deshabilitado</Button>
         </FilaDemo>
-        <FilaDemo etiqueta="Contexto de uso real">
+        <FilaDemo etiqueta="Contexto real">
           <Button tamaño="lg"><ShoppingCart className="w-4 h-4" aria-hidden="true" />Comprar Entrada</Button>
           <Button variante="secundario">Ver funciones</Button>
           <Button variante="peligro" tamaño="sm">Cancelar reserva</Button>
@@ -265,23 +217,18 @@ export default function Demo() {
 
       {/* ── 4. SPINNERS ─────────────────────────────────────────────────── */}
       <Seccion id="sec-spinners" titulo="Spinners de Carga">
-        {/* Los tres tamaños alineados en la misma fila base con etiqueta debajo */}
-        <div className="flex gap-10 items-end">
-          <div className="flex flex-col items-center gap-2">
-            <Spinner tamaño="sm" />
-            <span className="text-xs text-gray-500 font-cuerpo">sm · 16 px</span>
-            <span className="text-[11px] text-gray-400 font-cuerpo">En botones / inline</span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <Spinner tamaño="md" />
-            <span className="text-xs text-gray-500 font-cuerpo">md · 28 px</span>
-            <span className="text-[11px] text-gray-400 font-cuerpo">Sección pequeña</span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <Spinner tamaño="lg" />
-            <span className="text-xs text-gray-500 font-cuerpo">lg · 48 px</span>
-            <span className="text-[11px] text-gray-400 font-cuerpo">Carga de página</span>
-          </div>
+        <div className="flex gap-10 items-end flex-wrap">
+          {[
+            { tamaño: "sm", px: "16 px", uso: "En botones / inline"   },
+            { tamaño: "md", px: "28 px", uso: "Sección pequeña"        },
+            { tamaño: "lg", px: "48 px", uso: "Carga de página"        },
+          ].map(({ tamaño, px, uso }) => (
+            <div key={tamaño} className="flex flex-col items-center gap-2">
+              <Spinner tamaño={tamaño} />
+              <span className="text-xs text-gray-500 font-cuerpo">{tamaño} · {px}</span>
+              <span className="text-[11px] text-gray-400 font-cuerpo">{uso}</span>
+            </div>
+          ))}
           <div className="flex flex-col items-center gap-2">
             <Spinner tamaño="lg" texto="Cargando cartelera..." />
             <span className="text-[11px] text-gray-400 font-cuerpo">Con texto</span>
@@ -290,19 +237,14 @@ export default function Demo() {
       </Seccion>
 
       {/* ── 5. TOASTS ───────────────────────────────────────────────────── */}
-      <Seccion id="sec-toasts" titulo="Toasts (Notificaciones)">
-        <p className="text-sm text-gray-500 font-cuerpo -mt-2">
-          Aparecen en la esquina inferior derecha y se cierran automáticamente a los 4 segundos.
-        </p>
+      <Seccion id="sec-toasts" titulo="Toasts (Notificaciones)"
+        descripcion="Aparecen en la esquina inferior derecha y se cierran automáticamente a los 4 s.">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {TOASTS.map(({ tipo, label, variante, titulo, mensaje }) => (
+          {TOASTS.map(({ tipo, label, titulo, mensaje }) => (
             <button
               key={tipo}
               onClick={() => toast({ tipo, titulo, mensaje })}
-              className={cn(
-                "tarjeta p-4 text-left flex flex-col gap-1 cursor-pointer",
-                "hover:shadow-boton transition-shadow duration-200 group"
-              )}
+              className="tarjeta p-4 text-left flex flex-col gap-1 cursor-pointer hover:shadow-boton transition-shadow duration-200 group"
               aria-label={`Mostrar toast de ${tipo}`}
             >
               <span className="text-base">{label.split(" ")[0]}</span>
@@ -316,69 +258,68 @@ export default function Demo() {
       </Seccion>
 
       {/* ── 6. STATCARDS ─────────────────────────────────────────────────── */}
-      <Seccion id="sec-statcards" titulo="StatCards del Dashboard">
-        <p className="text-sm text-gray-500 font-cuerpo -mt-2">
-          Verde (ventas) · Azul (entradas) · Violeta claro (funciones activas) · Violeta (usuarios).
-        </p>
+      <Seccion id="sec-statcards" titulo="StatCards del Dashboard"
+        descripcion="Verde (ventas) · Azul (entradas) · Violeta claro (funciones activas) · Violeta (usuarios).">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            icono={<DollarSign />}
-            colorIcono="bg-metrica-ventas"
-            etiqueta="Ventas Totales"
-            valor="$ 12.450.000"
-            variacion="+12% este mes"
-            positivo
-          />
-          <StatCard
-            icono={<Ticket />}
-            colorIcono="bg-metrica-entradas"
-            etiqueta="Entradas Vendidas"
-            valor="2.350"
-            variacion="+8% este mes"
-            positivo
-          />
-          <StatCard
-            icono={<Activity />}
-            colorIcono="bg-metrica-activas"
-            etiqueta="Funciones Activas"
-            valor="12"
-          />
-          <StatCard
-            icono={<Users />}
-            colorIcono="bg-primario"
-            etiqueta="Usuarios Registrados"
-            valor="847"
-            variacion="-2% este mes"
-            positivo={false}
-          />
+          <StatCard icono={<DollarSign />} colorIcono="bg-metrica-ventas"   etiqueta="Ventas Totales"       valor="$ 12.450.000" variacion="+12% este mes" positivo />
+          <StatCard icono={<Ticket />}     colorIcono="bg-metrica-entradas" etiqueta="Entradas Vendidas"    valor="2.350"        variacion="+8% este mes"  positivo />
+          <StatCard icono={<Activity />}   colorIcono="bg-metrica-activas"  etiqueta="Funciones Activas"   valor="12" />
+          <StatCard icono={<Users />}      colorIcono="bg-primario"         etiqueta="Usuarios Registrados" valor="847"          variacion="-2% este mes"  positivo={false} />
         </div>
       </Seccion>
 
-      {/* ── 7. MOVIECARDS ────────────────────────────────────────────────── */}
-      <Seccion id="sec-moviecards" titulo="MovieCards (Cartelera)">
-        <p className="text-sm text-gray-500 font-cuerpo -mt-2">
-          Títulos en Poppins, tamaño uniforme. Los títulos largos (como "Deadpool &amp; Wolverine") se parten en dos líneas en vez de truncarse.
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      {/* ── 7. CATÁLOGO — 6 PELÍCULAS CON PÓSTERS SVG ───────────────────── */}
+      <Seccion id="sec-catalogo" titulo="Catálogo de Películas (Mock)"
+        descripcion="6 películas con pósters SVG locales (/public/posters/). Proporción 2:3, object-cover, object-top. Los campos marcados 'Por definir' esperan datos del equipo.">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {PELICULAS_MOCK.map((pelicula) => (
             <MovieCard
               key={pelicula.id}
               pelicula={pelicula}
-              onComprar={() =>
-                toast({ tipo: "info", titulo: `Seleccionaste: ${pelicula.titulo}` })
-              }
+              onComprar={() => toast({ tipo: "info", titulo: `Seleccionaste: ${pelicula.titulo}` })}
             />
           ))}
         </div>
+        {/* Tabla de datos para verificación */}
+        <div className="overflow-x-auto mt-4">
+          <table className="w-full text-xs font-cuerpo border border-gray-200 rounded-lg overflow-hidden">
+            <thead className="bg-gray-50">
+              <tr>
+                {["ID","Título","Género","Clasificación","Duración","Póster","Estado"].map(h => (
+                  <th key={h} className="px-3 py-2 text-left text-gray-600 font-semibold border-b border-gray-200">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PELICULAS_MOCK.map((p, i) => (
+                <tr key={p.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                  <td className="px-3 py-2 text-gray-500">{p.id}</td>
+                  <td className="px-3 py-2 font-semibold text-gray-800">{p.titulo}</td>
+                  <td className="px-3 py-2 text-gray-600">{p.genero}</td>
+                  <td className="px-3 py-2"><Badge variante="neutro">{p.clasificacion}</Badge></td>
+                  <td className="px-3 py-2 text-gray-600">{p.duracion} min</td>
+                  <td className="px-3 py-2 text-primario truncate max-w-[140px]">{p.poster}</td>
+                  <td className="px-3 py-2"><Badge variante={p.estado === "activa" ? "exito" : "neutro"}>{p.estado}</Badge></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Seccion>
 
-      {/* ── 8. CARDS ─────────────────────────────────────────────────────── */}
+      {/* ── 8. MAPA DE ASIENTOS VISUAL ───────────────────────────────────── */}
+      <Seccion id="sec-mapa" titulo="Mapa de Asientos (Visual)"
+        descripcion="Solo de presentación. Los 4 estados con sus colores: disponible (gris claro), seleccionado (violeta), reservado (ámbar), vendido (gris oscuro). El mapa interactivo con lógica de compra se construirá en la Fase 2.">
+        <div className="tarjeta p-6 max-w-2xl">
+          <MapaAsientosDemo />
+        </div>
+      </Seccion>
+
+      {/* ── 9. CARDS ─────────────────────────────────────────────────────── */}
       <Seccion id="sec-cards" titulo="Cards">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
           <Card>
-            <CardHeader>
-              <h3 className="font-titulo font-bold text-gray-900">Tarjeta básica</h3>
-            </CardHeader>
+            <CardHeader><h3 className="font-titulo font-bold text-gray-900">Tarjeta básica</h3></CardHeader>
             <CardBody>
               <p className="text-sm text-gray-600 font-cuerpo">
                 Bordes redondeados, sombra suave violeta y fondo blanco. Usada para resúmenes, detalles de función, etc.
@@ -399,7 +340,7 @@ export default function Demo() {
         </div>
       </Seccion>
 
-      {/* ── 9. INPUTS ────────────────────────────────────────────────────── */}
+      {/* ── 10. INPUTS ───────────────────────────────────────────────────── */}
       <Seccion id="sec-inputs" titulo="Inputs">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
           <Input etiqueta="Correo electrónico" placeholder="usuario@ejemplo.com" tipo="email" />
@@ -409,18 +350,18 @@ export default function Demo() {
         </div>
       </Seccion>
 
-      {/* ── 10. PALETA ────────────────────────────────────────────────────── */}
+      {/* ── 11. PALETA ───────────────────────────────────────────────────── */}
       <Seccion id="sec-paleta" titulo="Paleta de Colores">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { nombre: "Primario",           clase: "bg-primario" },
-            { nombre: "Primario oscuro",    clase: "bg-primario-oscuro" },
-            { nombre: "Noche",              clase: "bg-noche" },
-            { nombre: "Noche oscuro",       clase: "bg-noche-oscuro" },
-            { nombre: "Éxito (verde)",      clase: "bg-exito" },
-            { nombre: "Error (rojo)",       clase: "bg-error" },
-            { nombre: "Advertencia (ámbar)",clase: "bg-advertencia" },
-            { nombre: "Info (azul)",        clase: "bg-info" },
+            { nombre: "Primario",            clase: "bg-primario" },
+            { nombre: "Primario oscuro",     clase: "bg-primario-oscuro" },
+            { nombre: "Noche",               clase: "bg-noche" },
+            { nombre: "Noche oscuro",        clase: "bg-noche-oscuro" },
+            { nombre: "Éxito (verde)",       clase: "bg-exito" },
+            { nombre: "Error (rojo)",        clase: "bg-error" },
+            { nombre: "Advertencia (ámbar)", clase: "bg-advertencia" },
+            { nombre: "Info (azul)",         clase: "bg-info" },
           ].map((c) => (
             <div key={c.nombre} className="flex items-center gap-3">
               <div className={cn("w-10 h-10 rounded-xl shrink-0", c.clase)} aria-hidden="true" />

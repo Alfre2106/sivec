@@ -1,117 +1,183 @@
 # 🎬 SIVEC — Sistema de Venta de Entradas para Eventos/Cine
 
 Proyecto universitario — Ingeniería de Sistemas, Semestre VIII.
+Frontend completo con datos simulados (mock), listo para conectar un backend Flask + PostgreSQL.
 
 ---
 
-## Tecnologías
+## 📋 Descripción
 
-| Herramienta | Versión | Uso |
-|---|---|---|
-| React | 18/19 | Framework UI |
-| Vite | 8 | Bundler y dev server |
-| Tailwind CSS | 3 | Estilos utilitarios |
-| React Router | 6 | Navegación SPA |
-| Recharts | última | Gráficas del dashboard |
-| lucide-react | última | Iconos |
-| date-fns | última | Manejo de fechas |
-| qrcode.react | última | Generación de QR |
-| html5-qrcode | última | Escaneo de QR con cámara |
-| zustand | última | Estado global (si se necesita) |
+SIVEC es un sistema de venta de entradas para cine y eventos. Permite:
+
+- **Clientes:** ver cartelera, elegir asientos, reservar (5 min), pagar (simulado) y recibir entrada con QR.
+- **Taquilleros:** vender en taquilla (4 pasos), validar entradas (cámara / manual / imagen QR) y ver historial.
+- **Administradores:** gestionar funciones, salas y usuarios, y consultar reportes con gráficas.
 
 ---
 
-## Instalación
+## 🛠️ Tecnologías
+
+| Herramienta | Uso |
+|---|---|
+| React 18/19 + Vite | Framework UI y bundler |
+| Tailwind CSS 3 | Estilos (tokens de diseño en `tailwind.config.js`) |
+| React Router v6 | Navegación SPA con rutas protegidas por rol |
+| Recharts | Gráficas del dashboard y reportes |
+| lucide-react | Iconos |
+| date-fns | Manejo y formato de fechas (locale español) |
+| qrcode.react | Generación de códigos QR |
+| html5-qrcode | Escaneo de QR por cámara y desde imagen |
+| Context API | Estado global (sesión y carrito) |
+
+---
+
+## 🚀 Instalación y ejecución
 
 ```bash
-# Clonar el repositorio
-git clone <url-del-repo>
-cd sivec
-
-# Instalar dependencias
+# 1. Instalar dependencias
 npm install
-```
 
----
-
-## Ejecución en desarrollo
-
-```bash
+# 2. Ejecutar en modo desarrollo
 npm run dev
+# Abre http://localhost:5173
+
+# 3. Compilar para producción
+npm run build
+
+# 4. Previsualizar el build
+npm run preview
 ```
 
-La app estará disponible en [http://localhost:5173](http://localhost:5173).
-
 ---
 
-## Usuarios de prueba
+## 👤 Usuarios de prueba
 
-| Correo | Contraseña | Rol |
+Contraseña para todos: **`123456`**
+
+| Correo | Rol | Accede a |
 |---|---|---|
-| cliente@sivec.com | 123456 | Cliente |
-| taquillero@sivec.com | 123456 | Taquillero |
-| admin@sivec.com | 123456 | Administrador |
+| `cliente@sivec.com` | Cliente | Cartelera, compra, mis compras, perfil |
+| `taquillero@sivec.com` | Taquillero | Venta en taquilla, validación, historial |
+| `admin@sivec.com` | Administrador | Dashboard, funciones, salas, usuarios, reportes |
+
+En la pantalla de login hay **botones de acceso rápido** por rol para la demostración.
 
 ---
 
-## Estructura del proyecto
+## 📂 Estructura del proyecto
 
 ```
 src/
 ├── components/
-│   ├── ui/          # Componentes shadcn/ui base
-│   └── ...          # Componentes reutilizables (SeatMap, MovieCard, etc.)
+│   ├── ui/              # Componentes base (Button, Card, Input, Badge, Modal,
+│   │                    #   Toast, Spinner, EstadoVacio, MensajeError)
+│   ├── Navbar.jsx       # Barra pública
+│   ├── Sidebar.jsx      # Menú lateral del panel
+│   ├── Topbar.jsx       # Barra superior del panel
+│   ├── Footer.jsx
+│   ├── Logo.jsx         # Logo centralizado
+│   ├── MovieCard.jsx    # Tarjeta de película
+│   ├── SeatMap.jsx      # Mapa de asientos interactivo (tipo butaca)
+│   ├── Countdown.jsx    # Cuenta regresiva de reserva
+│   ├── QRTicket.jsx     # Entrada con código QR
+│   ├── StatCard.jsx     # Métrica del dashboard
+│   ├── PasoIndicador.jsx# Stepper del wizard de taquilla
+│   └── ErrorBoundary.jsx# Captura errores de React
 ├── layouts/
-│   ├── PublicLayout.jsx   # Layout para páginas públicas y cliente
-│   └── PanelLayout.jsx    # Layout para taquillero y administrador
+│   ├── PublicLayout.jsx # Navbar + Footer (público/cliente)
+│   └── PanelLayout.jsx  # Sidebar + Topbar (taquilla/admin)
 ├── pages/
-│   ├── public/      # Landing, Login, Registro
-│   ├── cliente/     # Cartelera, Asientos, Pago, QR, Mis Compras
-│   ├── taquilla/    # Venta, Validación, Historial
-│   └── admin/       # Dashboard, Funciones, Salas, Usuarios, Reportes
-├── services/        # Capa de servicios (mock hoy, Flask después)
-│   ├── config.js
+│   ├── public/          # Landing, Login, Registro, 404, Demo, Componentes
+│   ├── cliente/         # Cartelera, Asientos, Resumen, Pago, EntradaQR, MisCompras, Perfil
+│   ├── taquilla/        # VentaTaquilla, ValidarEntrada, HistorialVentas
+│   └── admin/           # Dashboard, Funciones, Salas, Usuarios, Reportes
+├── services/            # Capa de acceso a datos (mock hoy, Flask después)
+│   ├── config.js        # URL base y MODO_MOCK
+│   ├── almacenamiento.js# Persistencia en localStorage (se elimina con Flask)
 │   ├── authService.js
+│   ├── peliculasService.js
 │   ├── funcionesService.js
+│   ├── salasService.js
 │   ├── asientosService.js
 │   ├── comprasService.js
-│   └── entradasService.js
-├── data/            # Datos mock (JSON / JS)
-├── context/         # AuthContext, CartContext
-├── hooks/           # Custom hooks
-├── utils/           # Funciones utilitarias
-└── routes/          # AppRoutes, ProtectedRoute
+│   ├── entradasService.js
+│   └── reportesService.js
+├── data/                # Datos mock iniciales (JS)
+├── context/             # AuthContext, CartContext
+├── hooks/               # useFuncion, useTaquilla, useRefrescoAlEnfocar
+├── utils/               # cn (clases), formato (precio/duración/countdown)
+└── routes/              # AppRoutes, ProtectedRoute, menuConfig
 ```
 
 ---
 
-## Fases de desarrollo
+## 🔐 Roles y permisos
 
-- [x] **Fase 0** — Setup: Tailwind, tokens de diseño, rutas, layouts, servicios mock
-- [ ] **Fase 1** — Componentes base: Navbar, Sidebar, botones, tarjetas
-- [ ] **Fase 2** — Flujo del cliente (pantallas 1–10)
-- [ ] **Fase 3** — Taquilla y validación (pantallas 11–13)
-- [ ] **Fase 4** — Administración y reportes (pantallas 14–18)
-- [ ] **Fase 5** — Pulido: responsive, accesibilidad, README final
+Las rutas están protegidas por `ProtectedRoute`:
+
+- Un cliente que intente entrar a `/panel/admin` verá **"Acceso denegado"**.
+- Un usuario sin sesión es redirigido a `/login`.
 
 ---
 
-## Conexión con backend Flask (futura)
+## 📐 Reglas de negocio implementadas
 
-Cuando el backend esté listo:
-
-1. Copia `.env.example` a `.env.local`
-2. Define `VITE_API_URL=http://localhost:5000/api`
-3. Cambia `MODO_MOCK = false` en `src/services/config.js`
-4. Reemplaza el cuerpo de cada función en `/services` por llamadas `fetch`/`axios`
-
-Los componentes **no necesitan cambios**.
+- Un asiento tiene **un solo estado**: disponible, reservado o vendido.
+- La reserva dura **5 minutos** con cuenta regresiva; al vencer, el asiento vuelve a disponible.
+- **No se venden** entradas de funciones ya iniciadas o finalizadas.
+- Cada entrada tiene un **código único** y solo puede usarse una vez (activa → usada).
+- Si una función se cancela, sus entradas pasan a **anulada**.
+- El pago es **simulado** (tarjeta falsa, con opción de simular rechazo).
 
 ---
 
-## Variables de entorno
+## 🗃️ Sobre los datos (mock)
 
-```env
-# .env.local (crear manualmente, no versionar)
-VITE_API_URL=http://localhost:5000/api
-```
+Hoy el frontend usa **datos simulados** que viven en `src/data/` y se gestionan desde `src/services/`.
+
+Para que la demo sea realista, los cambios se **persisten en `localStorage`**
+(ver `src/services/almacenamiento.js`): si el admin cambia un precio, se refleja
+en los demás paneles y sobrevive a recargas.
+
+> Para restaurar los datos originales hay un botón **"Reiniciar datos de prueba"**
+> en el Dashboard del administrador.
+
+---
+
+## 🔌 Conexión futura con backend Flask
+
+El cambio a Flask solo toca la **capa de servicios**, no los componentes:
+
+1. Copia `.env.example` a `.env.local` y define `VITE_API_URL`.
+2. En `src/services/config.js`, cambia `MODO_MOCK = false`.
+3. En cada archivo de `src/services/`, reemplaza el cuerpo de las funciones
+   (que hoy leen mock) por llamadas `fetch`/`axios` a la API.
+4. Elimina `src/services/almacenamiento.js` (el backend será la fuente de verdad).
+
+Los componentes y páginas **no requieren cambios**.
+
+---
+
+## ♿ Accesibilidad
+
+- Navegación por teclado en el mapa de asientos (Enter/Espacio).
+- Enlace "Saltar al contenido" para lectores de pantalla.
+- `aria-label`, `role` y `aria-live` en toasts, modales y resultados de validación.
+- Contraste de color acorde a los tokens de diseño.
+
+> Nota: la validación WCAG completa requiere pruebas manuales con tecnologías de asistencia.
+
+---
+
+## 📄 Páginas (18)
+
+**Cliente:** Landing · Login · Registro · Cartelera · Selección de asientos ·
+Resumen · Pago · Entrada QR · Mis compras · Perfil
+
+**Taquilla:** Venta en taquilla · Validar entrada · Historial de ventas
+
+**Admin:** Dashboard · Funciones · Salas · Usuarios · Reportes
+
+---
+
+© 2026 SIVEC — Proyecto universitario. Datos simulados, sin valor comercial.

@@ -5,7 +5,8 @@
  */
 
 import { Link } from "react-router-dom"
-import { Film, Mail, Phone, MapPin } from "lucide-react"
+import { Mail, Phone, MapPin } from "lucide-react"
+import Logo from "@/components/Logo"
 
 export default function Footer() {
   const año = new Date().getFullYear()
@@ -21,14 +22,8 @@ export default function Footer() {
 
           {/* Logo y descripción */}
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-degradado-violeta flex items-center justify-center">
-                <Film className="w-4 h-4 text-white" aria-hidden="true" />
-              </div>
-              <span className="font-titulo font-extrabold italic text-xl text-white">
-                SIVEC
-              </span>
-            </div>
+            <Logo tamaño="md" className="self-start" />
+
             <p className="text-sm leading-relaxed">
               Sistema de Venta de Entradas para Eventos y Cine. Compra, reserva
               y disfruta tus películas y eventos favoritos.

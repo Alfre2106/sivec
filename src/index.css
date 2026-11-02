@@ -80,3 +80,32 @@
     transform: translateY(0);
   }
 }
+
+/* ── Impresión: solo el ticket marcado con [data-imprimible] ──────────────── */
+@media print {
+  /* Ocultar todo por defecto */
+  body * {
+    visibility: hidden;
+  }
+  /* Mostrar solo el área imprimible y su contenido */
+  [data-imprimible],
+  [data-imprimible] * {
+    visibility: visible;
+  }
+  /* Posicionar el área imprimible al inicio de la página */
+  [data-imprimible] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+  }
+  /* Ocultar elementos que no deben imprimirse aunque estén dentro del área */
+  [data-no-imprimir] {
+    display: none !important;
+  }
+}

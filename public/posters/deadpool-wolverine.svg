@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#DC2626"/><stop offset="100%" stop-color="#7F1D1D"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="450" fill="url(#g)"/>
+  <rect x="0" y="0" width="150" height="450" fill="#DC2626" opacity="0.5"/>
+  <rect x="150" y="0" width="150" height="450" fill="#1F2937" opacity="0.6"/>
+  <line x1="150" y1="0" x2="150" y2="450" stroke="white" stroke-width="3" opacity="0.4"/>
+  <text x="75" y="175" font-family="sans-serif" font-size="52" text-anchor="middle">🔴</text>
+  <text x="225" y="175" font-family="sans-serif" font-size="52" text-anchor="middle">🟡</text>
+  <rect x="25" y="285" width="250" height="2" fill="white" opacity="0.25"/>
+  <text x="150" y="323" font-family="sans-serif" font-size="15" font-weight="bold" fill="white" text-anchor="middle">Deadpool &amp; Wolverine</text>
+  <text x="150" y="350" font-family="sans-serif" font-size="12" fill="#FCA5A5" text-anchor="middle">Acción / Comedia · +16 · 127 min</text>
+  <text x="150" y="420" font-family="sans-serif" font-size="10" fill="#DC2626" text-anchor="middle">● SIVEC CINE ●</text>
+</svg>

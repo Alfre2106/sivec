@@ -7,9 +7,12 @@
 
 import { simularLatencia } from "./config"
 import { USUARIOS_MOCK } from "@/data/usuarios"
+import { cargar, guardar } from "./almacenamiento"
 
-// Copia mutable de usuarios (para soportar registro en tiempo de ejecución)
-let usuarios = [...USUARIOS_MOCK]
+// Usuarios persistidos en localStorage (incluye contraseñas en mock; en Flask irían hasheadas en BD)
+let usuarios = cargar("usuarios", () => USUARIOS_MOCK.map((u) => ({ ...u })))
+
+const persistir = () => guardar("usuarios", usuarios)
 
 /**
  * Inicia sesión con email y contraseña.
@@ -60,6 +63,7 @@ export async function registrar(datos) {
   }
 
   usuarios.push(nuevoUsuario)
+  persistir()
 
   const token = `mock-token-${nuevoUsuario.id}-${Date.now()}`
   const { password: _omitido, ...usuarioSeguro } = nuevoUsuario
@@ -90,6 +94,7 @@ export async function actualizarPerfil(usuarioId, datos) {
   const idx = usuarios.findIndex((u) => u.id === usuarioId)
   if (idx === -1) throw new Error("Usuario no encontrado.")
   usuarios[idx] = { ...usuarios[idx], ...datos }
+  persistir()
   const { password: _omitido, ...usuarioSeguro } = usuarios[idx]
   return usuarioSeguro
 }
@@ -101,4 +106,67 @@ export async function actualizarPerfil(usuarioId, datos) {
 export async function listarUsuarios() {
   await simularLatencia(300)
   return usuarios.map(({ password: _omitido, ...u }) => u)
+}
+
+/**
+ * Crea un usuario con rol (solo admin).
+ * @param {Object} datos — { nombre, email, password, rol, telefono }
+ */
+export async function crearUsuario(datos) {
+  await simularLatencia(400)
+  if (usuarios.find((u) => u.email === datos.email)) {
+    throw new Error("El correo ya está registrado.")
+  }
+  const nuevo = {
+    id: `u${Date.now()}`,
+    activo: true,
+    fechaRegistro: new Date().toISOString(),
+    password: datos.password ?? "123456",
+    ...datos,
+  }
+  usuarios.push(nuevo)
+  persistir()
+  const { password: _o, ...seguro } = nuevo
+  return seguro
+}
+
+/**
+ * Actualiza los datos de un usuario (rol, estado, nombre...) — admin.
+ * @param {string} id
+ * @param {Object} datos
+ */
+export async function actualizarUsuario(id, datos) {
+  await simularLatencia(350)
+  const idx = usuarios.findIndex((u) => u.id === id)
+  if (idx === -1) throw new Error("Usuario no encontrado.")
+  usuarios[idx] = { ...usuarios[idx], ...datos }
+  persistir()
+  const { password: _o, ...seguro } = usuarios[idx]
+  return seguro
+}
+
+/**
+ * Activa/desactiva un usuario (toggle).
+ * @param {string} id
+ */
+export async function alternarActivoUsuario(id) {
+  await simularLatencia(250)
+  const idx = usuarios.findIndex((u) => u.id === id)
+  if (idx === -1) throw new Error("Usuario no encontrado.")
+  usuarios[idx].activo = !usuarios[idx].activo
+  persistir()
+  const { password: _o, ...seguro } = usuarios[idx]
+  return seguro
+}
+
+/**
+ * Elimina un usuario por su ID (solo admin).
+ * @param {string} id
+ */
+export async function eliminarUsuario(id) {
+  await simularLatencia(300)
+  const existe = usuarios.some((u) => u.id === id)
+  if (!existe) throw new Error("Usuario no encontrado.")
+  usuarios = usuarios.filter((u) => u.id !== id)
+  persistir()
 }

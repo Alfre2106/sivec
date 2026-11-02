@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0891B2"/><stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+    <linearGradient id="sol" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FDE68A"/><stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="450" fill="url(#g)"/>
+  <!-- Sol -->
+  <circle cx="230" cy="90" r="45" fill="url(#sol)" opacity="0.85"/>
+  <!-- Océano -->
+  <rect x="0" y="220" width="300" height="230" fill="#0C4A6E" opacity="0.5"/>
+  <!-- Ola -->
+  <path d="M0,240 Q75,210 150,240 Q225,270 300,240 L300,280 Q225,250 150,280 Q75,310 0,280 Z" fill="#38BDF8" opacity="0.4"/>
+  <!-- Flor -->
+  <text x="150" y="200" font-family="sans-serif" font-size="56" text-anchor="middle">🌺</text>
+  <rect x="25" y="290" width="250" height="2" fill="white" opacity="0.25"/>
+  <text x="150" y="328" font-family="sans-serif" font-size="20" font-weight="bold" fill="white" text-anchor="middle">Moana</text>
+  <text x="150" y="355" font-family="sans-serif" font-size="12" fill="#A5F3FC" text-anchor="middle">Aventura / Familiar · Por definir</text>
+  <text x="150" y="420" font-family="sans-serif" font-size="10" fill="#06B6D4" text-anchor="middle">● SIVEC CINE ●</text>
+</svg>

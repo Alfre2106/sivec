@@ -1,30 +1,16 @@
 /**
  * Sidebar.jsx — Barra lateral del panel de control (taquillero y administrador).
  *
- * Características:
- *  - Fondo azul noche con degradado (bg-degradado-sidebar)
- *  - Logo SIVEC en la parte superior
- *  - Lista de links con icono + etiqueta; ítem activo con fondo violeta
- *  - Botón "Cerrar Sesión" en la parte inferior
- *  - En mobile: se oculta y hay un botón en el Topbar para abrirlo (overlay)
- *
- * Props:
- *  @param {Object[]} items — Array de { a, icono, etiqueta }
- *  @param {boolean} [abierto] — Controla visibilidad en mobile (manejado desde PanelLayout)
- *  @param {() => void} [onCerrar] — Cierra el sidebar en mobile
+ * Desktop: parte del flujo flex normal, ancho fijo w-60, ocupa toda la altura.
+ * Mobile:  overlay deslizante desde la izquierda.
  */
 
 import { NavLink, Link, useNavigate } from "react-router-dom"
-import { Film, LogOut, X } from "lucide-react"
+import { LogOut, X } from "lucide-react"
 import { useAuth } from "@/context/AuthContext"
+import Logo from "@/components/Logo"
 import { cn } from "@/utils/cn"
 
-/**
- * @param {Object} props
- * @param {{ a: string, icono: React.ReactNode, etiqueta: string }[]} props.items
- * @param {boolean} [props.abierto=true]
- * @param {() => void} [props.onCerrar]
- */
 export default function Sidebar({ items = [], abierto = true, onCerrar }) {
   const { usuario, rol, logout } = useAuth()
   const navigate = useNavigate()
@@ -36,7 +22,7 @@ export default function Sidebar({ items = [], abierto = true, onCerrar }) {
 
   return (
     <>
-      {/* Overlay oscuro en mobile cuando el sidebar está abierto */}
+      {/* Overlay en mobile */}
       {abierto && (
         <div
           className="fixed inset-0 z-20 bg-black/50 lg:hidden"
@@ -45,68 +31,69 @@ export default function Sidebar({ items = [], abierto = true, onCerrar }) {
         />
       )}
 
-      {/* Panel del sidebar */}
+      {/* ── Panel del sidebar ──────────────────────────────────────────────── */}
       <aside
         className={cn(
-          // Base: fijo en mobile, estático en desktop
-          "fixed top-0 left-0 h-full z-30 w-64 flex flex-col",
-          "bg-degradado-sidebar text-white",
-          "transition-transform duration-300",
-          // Mobile: oculto por defecto, visible cuando abierto=true
+          // Mobile: fijo, se desliza; Desktop: estático dentro del flex
+          "fixed inset-y-0 left-0 z-30",
+          "lg:relative lg:inset-auto lg:z-auto",
+          // Ancho: 220 px es suficiente para todos los labels sin recorte
+          "w-[220px] flex-shrink-0",
+          // Fondo y color
+          "bg-degradado-sidebar text-white flex flex-col",
+          // Alto completo en ambos modos
+          "h-full lg:h-screen",
+          // Transición de entrada/salida en mobile
+          "transition-transform duration-300 ease-in-out",
           abierto ? "translate-x-0" : "-translate-x-full",
-          // Desktop: siempre visible
-          "lg:static lg:translate-x-0"
+          "lg:translate-x-0",
         )}
         aria-label="Menú lateral del panel"
       >
 
-        {/* ── Logo y botón cerrar (mobile) ───────────────────────────── */}
-        <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+        {/* ── Logo ──────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-white/10 shrink-0">
           <Link
             to="/"
-            className="flex items-center gap-2"
+            className="flex items-center min-w-0"
             aria-label="SIVEC — Ir al inicio"
             onClick={onCerrar}
           >
-            <div className="w-8 h-8 rounded-lg bg-degradado-violeta flex items-center justify-center">
-              <Film className="w-4 h-4 text-white" aria-hidden="true" />
-            </div>
-            <span className="font-titulo font-extrabold italic text-xl text-white tracking-tight">
-              SIVEC
-            </span>
+            <Logo tamaño="md" />
           </Link>
-          {/* Botón cerrar — solo en mobile */}
-          {onCerrar && (
-            <button
-              onClick={onCerrar}
-              className="lg:hidden p-1 rounded-lg hover:bg-white/10 transition-colors"
-              aria-label="Cerrar menú lateral"
-            >
-              <X className="w-5 h-5" aria-hidden="true" />
-            </button>
-          )}
+          {/* Botón cerrar — solo mobile */}
+          <button
+            onClick={onCerrar}
+            className="lg:hidden shrink-0 p-1 rounded-lg hover:bg-white/10 transition-colors"
+            aria-label="Cerrar menú lateral"
+          >
+            <X className="w-5 h-5" aria-hidden="true" />
+          </button>
         </div>
 
-        {/* ── Info del usuario ───────────────────────────────────────── */}
-        <div className="px-5 py-4 border-b border-white/10">
+        {/* ── Usuario ────────────────────────────────────────────────────── */}
+        <div className="px-4 py-3 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-degradado-violeta flex items-center justify-center font-titulo font-bold text-sm shrink-0">
+            <div className="w-8 h-8 rounded-full bg-degradado-violeta flex items-center justify-center font-titulo font-bold text-sm shrink-0">
               {usuario?.nombre?.charAt(0).toUpperCase() ?? "U"}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-titulo font-semibold text-white truncate">
+              <p className="text-sm font-titulo font-semibold text-white truncate leading-tight">
                 {usuario?.nombre}
               </p>
-              <p className="text-xs text-primario-claro capitalize font-cuerpo">
+              <p className="text-xs text-primario-claro capitalize font-cuerpo leading-tight">
                 {rol}
               </p>
             </div>
           </div>
         </div>
 
-        {/* ── Links de navegación ────────────────────────────────────── */}
-        <nav className="flex-1 px-3 py-4 overflow-y-auto" aria-label="Navegación del panel">
-          <ul className="flex flex-col gap-1" role="list">
+        {/* ── Navegación ─────────────────────────────────────────────────── */}
+        <nav
+          className="flex-1 px-2 py-3 overflow-y-auto"
+          aria-label="Navegación del panel"
+        >
+          <ul className="flex flex-col gap-0.5" role="list">
             {items.map((item) => (
               <li key={item.a + item.etiqueta}>
                 <NavLink
@@ -115,8 +102,10 @@ export default function Sidebar({ items = [], abierto = true, onCerrar }) {
                   onClick={onCerrar}
                   className={({ isActive }) =>
                     cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-xl",
+                      // Usamos nowrap para que el texto nunca se corte
+                      "flex items-center gap-2.5 px-3 py-2.5 rounded-xl",
                       "text-sm font-cuerpo font-medium transition-all duration-150",
+                      "whitespace-nowrap overflow-hidden",
                       isActive
                         ? "bg-primario text-white shadow-boton"
                         : "text-gray-400 hover:bg-white/10 hover:text-white"
@@ -125,26 +114,30 @@ export default function Sidebar({ items = [], abierto = true, onCerrar }) {
                   aria-label={item.etiqueta}
                 >
                   <span
-                    className="w-5 h-5 shrink-0 [&>svg]:w-5 [&>svg]:h-5"
+                    className="shrink-0 [&>svg]:w-[18px] [&>svg]:h-[18px]"
                     aria-hidden="true"
                   >
                     {item.icono}
                   </span>
-                  <span>{item.etiqueta}</span>
+                  <span className="truncate">{item.etiqueta}</span>
                 </NavLink>
               </li>
             ))}
           </ul>
         </nav>
 
-        {/* ── Cerrar sesión ─────────────────────────────────────────── */}
-        <div className="px-3 py-4 border-t border-white/10">
+        {/* ── Cerrar sesión ──────────────────────────────────────────────── */}
+        <div className="px-2 py-3 border-t border-white/10 shrink-0">
           <button
             onClick={manejarLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-cuerpo font-medium text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-all duration-150"
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl",
+              "text-sm font-cuerpo font-medium whitespace-nowrap",
+              "text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-all duration-150"
+            )}
             aria-label="Cerrar sesión"
           >
-            <LogOut className="w-5 h-5 shrink-0" aria-hidden="true" />
+            <LogOut className="w-[18px] h-[18px] shrink-0" aria-hidden="true" />
             <span>Cerrar Sesión</span>
           </button>
         </div>

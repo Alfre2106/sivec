@@ -125,7 +125,7 @@ export function CartProvider({ children }) {
 
   // Total de la compra basado en los asientos seleccionados
   const totalSeleccionado = funcionActual
-    ? asientosSeleccionados.length * (funcionActual.precioBase ?? 0)
+    ? asientosSeleccionados.length * (funcionActual.precio ?? funcionActual.precioBase ?? 0)
     : 0
 
   const valor = {

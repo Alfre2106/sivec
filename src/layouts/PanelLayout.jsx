@@ -1,27 +1,17 @@
 /**
- * PanelLayout.jsx — Layout para el panel de control (taquillero y administrador).
+ * PanelLayout.jsx — Layout del panel de control.
  *
- * Estructura:
- *  - Sidebar oscuro (fijo en desktop, overlay en mobile)
- *  - Topbar con botón hamburguesa y nombre de sección
- *  - Área de contenido scrollable
- *
- * El Sidebar muestra items según el rol del usuario (taquillero / admin).
+ * Desktop: sidebar estático a la izquierda dentro del flex + contenido a la derecha.
+ * Mobile:  sidebar como overlay (controlado por sidebarAbierto).
  */
 
 import { useState } from "react"
 import { Outlet, useLocation } from "react-router-dom"
 import Sidebar from "@/components/Sidebar"
-import Topbar from "@/components/Topbar"
+import Topbar  from "@/components/Topbar"
 import { useAuth } from "@/context/AuthContext"
 import { MENU_TAQUILLA, MENU_ADMIN } from "@/routes/menuConfig"
 
-/**
- * Obtiene el título de la página actual a partir de la ruta.
- * @param {string} pathname
- * @param {Object[]} items
- * @returns {string}
- */
 function obtenerTitulo(pathname, items) {
   const item = items.find((i) => pathname === i.a || pathname.startsWith(i.a + "/"))
   return item?.etiqueta ?? "Panel"
@@ -32,29 +22,26 @@ export default function PanelLayout() {
   const { pathname } = useLocation()
   const [sidebarAbierto, setSidebarAbierto] = useState(false)
 
-  // Seleccionar el menú según el rol
-  const items = rol === "admin" ? MENU_ADMIN : MENU_TAQUILLA
+  const items  = rol === "admin" ? MENU_ADMIN : MENU_TAQUILLA
   const titulo = obtenerTitulo(pathname, items)
 
   return (
-    <div className="min-h-screen flex bg-fondo-panel font-cuerpo">
+    // h-screen + overflow-hidden para que sidebar y contenido tengan exactamente la altura de la ventana
+    <div className="h-screen flex overflow-hidden bg-fondo-panel font-cuerpo">
 
-      {/* Sidebar (fijo desktop / overlay mobile) */}
+      {/* Sidebar — en desktop ocupa su ancho fijo; en mobile es overlay */}
       <Sidebar
         items={items}
         abierto={sidebarAbierto}
         onCerrar={() => setSidebarAbierto(false)}
       />
 
-      {/* Columna principal */}
-      <div className="flex-1 flex flex-col min-w-0 lg:ml-0">
-        {/* Topbar */}
+      {/* Columna principal: ocupa el resto del ancho */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Topbar
           titulo={titulo}
           onAbrirSidebar={() => setSidebarAbierto(true)}
         />
-
-        {/* Contenido de la ruta activa */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <Outlet />
         </main>

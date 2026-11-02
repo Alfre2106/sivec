@@ -10,9 +10,10 @@
 
 import { useState } from "react"
 import { NavLink, Link, useNavigate } from "react-router-dom"
-import { Film, Menu, X, User, ShoppingBag, LogOut, ChevronDown } from "lucide-react"
+import { Menu, X, User, ShoppingBag, LogOut, ChevronDown } from "lucide-react"
 import { useAuth } from "@/context/AuthContext"
 import Button from "@/components/ui/Button"
+import Logo from "@/components/Logo"
 import { cn } from "@/utils/cn"
 
 // Links de navegación principal.
@@ -60,16 +61,11 @@ export default function Navbar() {
           {/* ── Logo ─────────────────────────────────────────────────────── */}
           <Link
             to="/"
-            className="flex items-center gap-2 shrink-0"
+            className="flex items-center shrink-0"
             aria-label="SIVEC — Ir al inicio"
             onClick={cerrarMenus}
           >
-            <div className="w-8 h-8 rounded-lg bg-degradado-violeta flex items-center justify-center">
-              <Film className="w-4 h-4 text-white" aria-hidden="true" />
-            </div>
-            <span className="font-titulo font-extrabold italic text-xl text-white tracking-tight">
-              SIVEC
-            </span>
+            <Logo tamaño="md" />
           </Link>
 
           {/* ── Links de escritorio ───────────────────────────────────────── */}

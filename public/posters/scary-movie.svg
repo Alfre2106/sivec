@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FBBF24"/><stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="450" fill="#111827"/>
+  <!-- Fondo amarillo cómico -->
+  <circle cx="150" cy="160" r="110" fill="url(#g)" opacity="0.15"/>
+  <!-- Cara de susto cómica -->
+  <circle cx="150" cy="155" r="75" fill="#FDE68A" opacity="0.9"/>
+  <!-- Ojos -->
+  <circle cx="122" cy="140" r="14" fill="white"/>
+  <circle cx="178" cy="140" r="14" fill="white"/>
+  <circle cx="126" cy="140" r="8" fill="#111827"/>
+  <circle cx="182" cy="140" r="8" fill="#111827"/>
+  <!-- Boca abierta de susto -->
+  <path d="M115,170 Q150,205 185,170" fill="#111827" stroke="#111827" stroke-width="2"/>
+  <!-- Cejas levantadas -->
+  <path d="M110,122 Q122,115 134,122" stroke="#111827" stroke-width="3" fill="none"/>
+  <path d="M166,122 Q178,115 190,122" stroke="#111827" stroke-width="3" fill="none"/>
+  <rect x="25" y="285" width="250" height="2" fill="#FBBF24" opacity="0.5"/>
+  <text x="150" y="325" font-family="sans-serif" font-size="20" font-weight="bold" fill="#FBBF24" text-anchor="middle">Scary Movie</text>
+  <text x="150" y="352" font-family="sans-serif" font-size="12" fill="#9CA3AF" text-anchor="middle">Comedia / Parodia · Por definir</text>
+  <text x="150" y="420" font-family="sans-serif" font-size="10" fill="#FBBF24" text-anchor="middle">● SIVEC CINE ●</text>
+</svg>

@@ -5,9 +5,23 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // Alias @ para importaciones limpias desde src/
     alias: {
       '@': `${import.meta.dirname}/src`,
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        // Separar librerías pesadas en su propio chunk (sintaxis de función para Rolldown/Vite 8)
+        manualChunks(id) {
+          if (id.includes('html5-qrcode') || id.includes('qrcode.react')) return 'vendor-qr'
+          if (id.includes('recharts'))    return 'vendor-charts'
+          if (id.includes('date-fns'))    return 'vendor-dates'
+          if (id.includes('@radix-ui'))   return 'vendor-ui'
+          if (id.includes('node_modules')) return 'vendor'
+        },
+      },
     },
   },
 })

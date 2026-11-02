@@ -11,7 +11,7 @@
  */
 
 import { simularLatencia } from "./config"
-import { listarCompras } from "./comprasService"
+import { listarCompras, persistirCambios } from "./comprasService"
 import { obtenerFuncion } from "./funcionesService"
 
 /**
@@ -103,9 +103,10 @@ export async function validarEntrada(codigo, funcionIdActual = null) {
     }
   }
 
-  // ✅ Entrada válida — marcarla como usada
+  // ✅ Entrada válida — marcarla como usada y persistir
   entradaEncontrada.estado = "usada"
   entradaEncontrada.fechaUso = new Date().toISOString()
+  persistirCambios()
 
   return {
     estado: "valida",

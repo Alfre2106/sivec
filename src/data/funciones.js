@@ -1,123 +1,91 @@
 /**
- * funciones.js — Funciones (proyecciones) disponibles en SIVEC.
+ * funciones.js — Funciones (proyecciones) de SIVEC.
  *
- * IMPORTANTE: Las fechas se calculan de forma relativa a "hoy" para que
- * nunca queden vencidas. Se usan offsets en días desde la fecha actual.
+ * Reglas aplicadas:
+ *  - Todas las fechas son RELATIVAS a hoy (date-fns), nunca fijas.
+ *  - f_hoy_pasada: función de HOY que ya inició → probar "no vender funciones iniciadas".
+ *  - f_cancelada:  función cancelada → probar anulación de entradas.
+ *  - 3-5 funciones por película, repartidas entre las dos salas.
+ *  - Horarios típicos: 14:00, 16:30, 19:00, 21:30.
+ *  - Precio fijo: $20.000 COP.
+ *  - Estado: "activa" | "cancelada" | "finalizada"
  */
 
-import { addDays, setHours, setMinutes, setSeconds, startOfDay } from "date-fns"
+import {
+  addDays, subHours,
+  setHours, setMinutes, setSeconds,
+  startOfDay,
+} from "date-fns"
 
-/**
- * Genera una fecha futura relativa a hoy.
- * @param {number} diasOffset — días desde hoy
- * @param {number} hora — hora del día (0-23)
- * @param {number} minutos — minutos (0-59)
- * @returns {string} Fecha en formato ISO
- */
-const fechaFutura = (diasOffset, hora, minutos = 0) => {
-  const hoy = startOfDay(new Date())
-  const fecha = setSeconds(setMinutes(setHours(addDays(hoy, diasOffset), hora), minutos), 0)
-  return fecha.toISOString()
+// ── Helpers de fecha ──────────────────────────────────────────────────────────
+
+/** Fecha futura relativa a hoy con hora exacta */
+const fd = (diasOffset, hora, min = 0) => {
+  const base = setSeconds(setMinutes(setHours(startOfDay(new Date()), hora), min), 0)
+  return addDays(base, diasOffset).toISOString()
 }
 
+/**
+ * Función de HOY que ya lleva 90 minutos en curso
+ * → la hora de inicio es "ahora menos 90 minutos".
+ * Sirve para probar la regla "no vender entradas de funciones ya iniciadas".
+ */
+const funcionYaIniciada = () =>
+  subHours(new Date(), 1.5).toISOString()
+
+const PRECIO = 20000
+
+// ── Catálogo de funciones ─────────────────────────────────────────────────────
 export const FUNCIONES_MOCK = [
-  // ── Intensamente 2 ──────────────────────────────────────────────────────
+
+  // ─── p1 · Intensa-Mente 2 (5 funciones) ───────────────────────────────────
+  { id: "f01", peliculaId: "p1", salaId: "s1", fechaHora: fd(0, 14,  0), precio: PRECIO, estado: "activa"    },
+  { id: "f02", peliculaId: "p1", salaId: "s2", fechaHora: fd(0, 19,  0), precio: PRECIO, estado: "activa"    },
+  { id: "f03", peliculaId: "p1", salaId: "s1", fechaHora: fd(1, 16, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f04", peliculaId: "p1", salaId: "s2", fechaHora: fd(2, 21, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f05", peliculaId: "p1", salaId: "s1", fechaHora: fd(4, 14,  0), precio: PRECIO, estado: "activa"    },
+
+  // ─── p2 · Deadpool & Wolverine (4 funciones) ──────────────────────────────
+  { id: "f06", peliculaId: "p2", salaId: "s2", fechaHora: fd(0, 16, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f07", peliculaId: "p2", salaId: "s1", fechaHora: fd(1, 19,  0), precio: PRECIO, estado: "activa"    },
+  { id: "f08", peliculaId: "p2", salaId: "s2", fechaHora: fd(3, 21, 30), precio: PRECIO, estado: "activa"    },
+  // Función cancelada para probar anulación de entradas
+  { id: "f09", peliculaId: "p2", salaId: "s1", fechaHora: fd(5, 14,  0), precio: PRECIO, estado: "cancelada" },
+
+  // ─── p3 · La Odisea (4 funciones) ────────────────────────────────────────
+  { id: "f10", peliculaId: "p3", salaId: "s1", fechaHora: fd(0, 21, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f11", peliculaId: "p3", salaId: "s2", fechaHora: fd(1, 14,  0), precio: PRECIO, estado: "activa"    },
+  { id: "f12", peliculaId: "p3", salaId: "s1", fechaHora: fd(3, 16, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f13", peliculaId: "p3", salaId: "s2", fechaHora: fd(6, 19,  0), precio: PRECIO, estado: "activa"    },
+
+  // ─── p4 · Moana (3 funciones) ─────────────────────────────────────────────
+  { id: "f14", peliculaId: "p4", salaId: "s2", fechaHora: fd(1, 16, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f15", peliculaId: "p4", salaId: "s1", fechaHora: fd(2, 14,  0), precio: PRECIO, estado: "activa"    },
+  { id: "f16", peliculaId: "p4", salaId: "s2", fechaHora: fd(5, 19,  0), precio: PRECIO, estado: "activa"    },
+
+  // ─── p5 · La Noche del Demonio (4 funciones) ─────────────────────────────
+  { id: "f17", peliculaId: "p5", salaId: "s1", fechaHora: fd(0, 21, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f18", peliculaId: "p5", salaId: "s2", fechaHora: fd(2, 21, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f19", peliculaId: "p5", salaId: "s1", fechaHora: fd(4, 19,  0), precio: PRECIO, estado: "activa"    },
+  { id: "f20", peliculaId: "p5", salaId: "s2", fechaHora: fd(6, 21, 30), precio: PRECIO, estado: "activa"    },
+
+  // ─── p6 · Scary Movie (3 funciones) ──────────────────────────────────────
+  { id: "f21", peliculaId: "p6", salaId: "s2", fechaHora: fd(1, 19,  0), precio: PRECIO, estado: "activa"    },
+  { id: "f22", peliculaId: "p6", salaId: "s1", fechaHora: fd(3, 16, 30), precio: PRECIO, estado: "activa"    },
+  { id: "f23", peliculaId: "p6", salaId: "s2", fechaHora: fd(5, 14,  0), precio: PRECIO, estado: "activa"    },
+
+  // ─── p7 · Spider-Man: Brand New Day (3 funciones) ───────────────────────
+  { id: "f24", peliculaId: "p7", salaId: "s1", fechaHora: fd(1, 19,  0), precio: PRECIO, estado: "activa" },
+  { id: "f25", peliculaId: "p7", salaId: "s2", fechaHora: fd(3, 21, 30), precio: PRECIO, estado: "activa" },
+  { id: "f26", peliculaId: "p7", salaId: "s1", fechaHora: fd(5, 16, 30), precio: PRECIO, estado: "activa" },
+
+  // ─── Función especial: HOY, ya iniciada (para prueba de regla de negocio) ─
   {
-    id: "f1",
+    id: "f_iniciada",
     peliculaId: "p1",
     salaId: "s1",
-    fechaHora: fechaFutura(1, 15, 0),   // mañana 3:00 PM
-    precioBase: 15000,
-    idioma: "Español",
-    formato: "2D",
-    estado: "activa",   // activa | cancelada | finalizada
-  },
-  {
-    id: "f2",
-    peliculaId: "p1",
-    salaId: "s2",
-    fechaHora: fechaFutura(2, 19, 0),   // pasado mañana 7:00 PM
-    precioBase: 20000,
-    idioma: "Español",
-    formato: "3D",
-    estado: "activa",
-  },
-
-  // ── Deadpool & Wolverine ─────────────────────────────────────────────────
-  {
-    id: "f3",
-    peliculaId: "p2",
-    salaId: "s1",
-    fechaHora: fechaFutura(1, 19, 30), // mañana 7:30 PM
-    precioBase: 18000,
-    idioma: "Español",
-    formato: "2D",
-    estado: "activa",
-  },
-  {
-    id: "f4",
-    peliculaId: "p2",
-    salaId: "s2",
-    fechaHora: fechaFutura(3, 21, 0),
-    precioBase: 22000,
-    idioma: "Subtitulado",
-    formato: "IMAX",
-    estado: "activa",
-  },
-
-  // ── Moana 2 ─────────────────────────────────────────────────────────────
-  {
-    id: "f5",
-    peliculaId: "p3",
-    salaId: "s1",
-    fechaHora: fechaFutura(2, 14, 0),
-    precioBase: 15000,
-    idioma: "Español",
-    formato: "2D",
-    estado: "activa",
-  },
-  {
-    id: "f6",
-    peliculaId: "p3",
-    salaId: "s2",
-    fechaHora: fechaFutura(4, 16, 30),
-    precioBase: 15000,
-    idioma: "Español",
-    formato: "2D",
-    estado: "activa",
-  },
-
-  // ── Alien: Romulus ───────────────────────────────────────────────────────
-  {
-    id: "f7",
-    peliculaId: "p4",
-    salaId: "s2",
-    fechaHora: fechaFutura(1, 21, 30),
-    precioBase: 18000,
-    idioma: "Español",
-    formato: "2D",
-    estado: "activa",
-  },
-  {
-    id: "f8",
-    peliculaId: "p4",
-    salaId: "s1",
-    fechaHora: fechaFutura(5, 22, 0),
-    precioBase: 18000,
-    idioma: "Subtitulado",
-    formato: "2D",
-    estado: "activa",
-  },
-
-  // ── Concierto Sinfónico ──────────────────────────────────────────────────
-  {
-    id: "f9",
-    peliculaId: "p5",
-    salaId: "s1",
-    fechaHora: fechaFutura(7, 20, 0),
-    precioBase: 35000,
-    idioma: "Instrumental",
-    formato: "Evento en vivo",
-    estado: "activa",
+    fechaHora: funcionYaIniciada(),   // hace ~90 minutos
+    precio: PRECIO,
+    estado: "activa",   // estado "activa" pero ya inició → la UI debe bloquearlo
   },
 ]

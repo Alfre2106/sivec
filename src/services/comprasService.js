@@ -8,10 +8,16 @@
 import { simularLatencia, simularError } from "./config"
 import { COMPRAS_MOCK, contadorEntradas } from "@/data/compras"
 import { confirmarVenta } from "./asientosService"
+import { cargar, guardar } from "./almacenamiento"
 
-// Estado mutable de compras y entradas
-let compras = [...COMPRAS_MOCK]
-let contador = contadorEntradas
+// Estado persistido de compras y entradas
+let compras  = cargar("compras", () => COMPRAS_MOCK.map((c) => ({ ...c })))
+let contador = cargar("contadorEntradas", () => contadorEntradas)
+
+const persistir = () => {
+  guardar("compras", compras)
+  guardar("contadorEntradas", contador)
+}
 
 /**
  * Genera un código único de entrada.
@@ -72,6 +78,7 @@ export async function crearCompra(datos) {
   }
 
   compras.push(compra)
+  persistir()
 
   // Marcar los asientos como vendidos en el servicio de asientos
   await confirmarVenta(datos.funcionId, datos.asientoIds)
@@ -108,4 +115,12 @@ export async function obtenerCompra(compraId) {
 export async function listarCompras() {
   await simularLatencia(300)
   return [...compras]
+}
+
+/**
+ * Persiste cambios hechos sobre las entradas (ej: validación → "usada").
+ * La llama entradasService después de mutar el estado de una entrada.
+ */
+export function persistirCambios() {
+  persistir()
 }
