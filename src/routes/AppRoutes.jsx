@@ -29,6 +29,10 @@ const Placeholder = ({ titulo, descripcion }) => (
   </div>
 )
 
+// ── Importaciones de páginas existentes ──────────────────────────────────────
+import Demo from "@/pages/public/Demo"
+import Componentes from "@/pages/public/Componentes"
+
 // ── Importaciones de páginas reales (se irán descomentando en cada fase) ─────
 // Fase 2 — Cliente / Público:
 // import Landing          from "@/pages/public/Landing"
@@ -61,6 +65,12 @@ export default function AppRoutes() {
       {/* ── Rutas públicas / cliente ─────────────────────────────────────── */}
       <Route element={<PublicLayout />}>
         <Route index element={<Placeholder titulo="Landing — Inicio" descripcion="Fase 2" />} />
+        {/* Página de demostración de componentes (Fase 1) */}
+        <Route path="demo" element={<Demo />} />
+        <Route path="componentes" element={<Componentes />} />
+        {/* Rutas de Navbar que necesitan existir para que isActive funcione */}
+        <Route path="eventos" element={<Placeholder titulo="Eventos" descripcion="Fase 2" />} />
+        <Route path="contacto" element={<Placeholder titulo="Contacto" descripcion="Fase 2" />} />
         <Route path="login" element={<Placeholder titulo="Iniciar Sesión" descripcion="Fase 2" />} />
         <Route path="registro" element={<Placeholder titulo="Registro de Cliente" descripcion="Fase 2" />} />
         <Route path="cartelera" element={<Placeholder titulo="Cartelera" descripcion="Fase 2" />} />

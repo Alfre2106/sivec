@@ -1,6 +1,9 @@
 /**
  * main.jsx — Punto de entrada de la aplicación SIVEC.
  * Monta la app en el DOM con todos los proveedores globales.
+ *
+ * Orden de proveedores (de exterior a interior):
+ *  BrowserRouter → AuthProvider → CartProvider → ToastProvider → AppRoutes
  */
 
 import { StrictMode } from "react"
@@ -9,19 +12,20 @@ import { BrowserRouter } from "react-router-dom"
 
 import { AuthProvider } from "@/context/AuthContext"
 import { CartProvider } from "@/context/CartContext"
+import { ToastProvider } from "@/components/ui/Toast"
 import AppRoutes from "@/routes/AppRoutes"
 
 import "./index.css"
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    {/* BrowserRouter habilita la navegación con React Router v6 */}
     <BrowserRouter>
-      {/* AuthProvider: sesión y autenticación global */}
       <AuthProvider>
-        {/* CartProvider: carrito de asientos y reservas */}
         <CartProvider>
-          <AppRoutes />
+          {/* ToastProvider renderiza los toasts en un portal fuera del flujo */}
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
         </CartProvider>
       </AuthProvider>
     </BrowserRouter>
