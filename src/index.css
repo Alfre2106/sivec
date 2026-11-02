@@ -1,0 +1,82 @@
+/* index.css — Estilos globales de SIVEC */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Variables CSS personalizadas ─────────────────────────────────────────── */
+@layer base {
+  :root {
+    --color-primario: #7C3AED;
+    --color-noche:    #1B1145;
+  }
+
+  /* Fuente base de la app */
+  html {
+    @apply font-cuerpo text-gray-900 antialiased;
+  }
+
+  /* Scroll suave global */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Títulos con Poppins por defecto */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-titulo;
+  }
+}
+
+/* ── Utilidades de componentes reutilizables ──────────────────────────────── */
+@layer components {
+  /* Botón primario con degradado violeta */
+  .btn-primario {
+    @apply bg-degradado-violeta text-white font-titulo font-semibold
+           px-5 py-2.5 rounded-boton shadow-boton
+           transition-all duration-200
+           hover:opacity-90 hover:scale-[1.02]
+           focus:outline-none focus:ring-2 focus:ring-primario focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100;
+  }
+
+  /* Botón secundario (borde violeta) */
+  .btn-secundario {
+    @apply border-2 border-primario text-primario font-titulo font-semibold
+           px-5 py-2.5 rounded-boton bg-transparent
+           transition-all duration-200
+           hover:bg-primario hover:text-white
+           focus:outline-none focus:ring-2 focus:ring-primario focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Tarjeta base */
+  .tarjeta {
+    @apply bg-fondo-tarjeta rounded-sivec shadow-tarjeta border border-gray-100;
+  }
+
+  /* Input base */
+  .input-sivec {
+    @apply w-full px-4 py-2.5 rounded-boton border border-gray-200
+           bg-white text-gray-900 font-cuerpo text-sm
+           transition-colors duration-150
+           focus:outline-none focus:ring-2 focus:ring-primario focus:border-transparent
+           placeholder:text-gray-400;
+  }
+}
+
+/* ── Animaciones ──────────────────────────────────────────────────────────── */
+@layer utilities {
+  .animacion-entrada {
+    animation: fadeInUp 0.3s ease-out both;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
