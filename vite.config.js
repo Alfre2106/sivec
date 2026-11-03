@@ -4,6 +4,11 @@ import { defineConfig } from 'vite'
 // vite.config.js — Configuración de Vite para SIVEC
 export default defineConfig({
   plugins: [react()],
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true
+  },
   resolve: {
     alias: {
       '@': `${import.meta.dirname}/src`,

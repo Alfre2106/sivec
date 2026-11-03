@@ -33,8 +33,9 @@ export default function Pago() {
   const [simularRechazo, setSimularRechazo] = useState(false)
   const [resultado, setResultado] = useState(null) // "exito" | "rechazado"
 
-  // Redirigir si no hay reserva
-  if (!funcionActual || !reserva) {
+  // Redirigir si no hay reserva — PERO no cuando el pago ya fue exitoso
+  // (tras el éxito el carrito se limpia y estaría vacío a propósito).
+  if ((!funcionActual || !reserva) && resultado !== "exito") {
     navigate("/cartelera", { replace: true })
     return null
   }
@@ -48,11 +49,45 @@ export default function Pago() {
     setErrores((err) => ({ ...err, [campo]: "" }))
   }
 
+  /**
+   * Valida el vencimiento "MM/AA":
+   *  - formato completo (5 caracteres)
+   *  - mes entre 01 y 12
+   *  - que no esté vencida (compara con el mes/año actual)
+   * @returns {string|null} mensaje de error o null si es válida
+   */
+  const validarVencimiento = (expiry) => {
+    if (expiry.length < 5) return "Formato MM/AA incompleto"
+    const [mesStr, añoStr] = expiry.split("/")
+    const mes = Number(mesStr)
+    const año = Number(añoStr)
+
+    if (Number.isNaN(mes) || Number.isNaN(año)) return "Fecha inválida"
+    if (mes < 1 || mes > 12) return "El mes debe estar entre 01 y 12"
+
+    // Año de 2 dígitos → 20XX. Comparar con fin del mes de vencimiento.
+    const añoCompleto = 2000 + año
+    const ahora = new Date()
+    const añoActual = ahora.getFullYear()
+    const mesActual = ahora.getMonth() + 1 // 1-12
+
+    if (añoCompleto < añoActual || (añoCompleto === añoActual && mes < mesActual)) {
+      return "La tarjeta está vencida"
+    }
+    // Límite razonable: no más de 15 años a futuro
+    if (añoCompleto > añoActual + 15) return "Año de vencimiento no válido"
+
+    return null
+  }
+
   const validar = () => {
     const e = {}
     if (form.numero.replace(/\s/g,"").length < 16) e.numero  = "Número de tarjeta inválido"
     if (!form.nombre.trim())                        e.nombre  = "Nombre requerido"
-    if (form.expiry.length < 5)                     e.expiry  = "Fecha inválida"
+
+    const errorExpiry = validarVencimiento(form.expiry)
+    if (errorExpiry)                                e.expiry  = errorExpiry
+
     if (form.cvv.length < 3)                        e.cvv     = "CVV inválido"
     setErrores(e)
     return Object.keys(e).length === 0
@@ -71,8 +106,10 @@ export default function Pago() {
         total:           totalSeleccionado,
         simularRechazo,
       })
-      confirmarCompra(compra)
+      // Marcar éxito ANTES de limpiar el carrito para que la guarda de
+      // redirección no se dispare al vaciarse funcionActual/reserva.
       setResultado("exito")
+      confirmarCompra(compra)
       setTimeout(() => navigate(`/entrada/${compra.entradas[0].id}`, { state: { compra } }), 1500)
     } catch (err) {
       setResultado("rechazado")

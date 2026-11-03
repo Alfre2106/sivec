@@ -34,6 +34,8 @@ export default function Usuarios() {
   const [form, setForm]                 = useState(FORM_VACIO)
   const [guardando, setGuardando]       = useState(false)
   const [confirmar, setConfirmar]       = useState(null)    // usuario a eliminar
+  const [confirmarRol, setConfirmarRol] = useState(null)    // { usuario, nuevoRol }
+  const [confirmarEstado, setConfirmarEstado] = useState(null) // usuario a activar/desactivar
 
   const cargar = async () => setUsuarios(await listarUsuarios())
   useEffect(() => { cargar().finally(() => setCargando(false)) }, [])
@@ -98,25 +100,31 @@ export default function Usuarios() {
     }
   }
 
-  // ── Cambiar rol (select inline) ────────────────────────────────────────────
-  const cambiarRol = async (u, nuevoRol) => {
+  // ── Cambiar rol (tras confirmar) ───────────────────────────────────────────
+  const aplicarCambioRol = async () => {
+    const { usuario: u, nuevoRol } = confirmarRol
     try {
       await actualizarUsuario(u.id, { rol: nuevoRol })
       toast({ tipo: "exito", titulo: `Rol actualizado a ${nuevoRol}` })
       await cargar()
     } catch (err) {
       toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+    } finally {
+      setConfirmarRol(null)
     }
   }
 
-  // ── Activar/desactivar ─────────────────────────────────────────────────
-  const alternar = async (u) => {
+  // ── Activar/desactivar (tras confirmar) ────────────────────────────────────
+  const aplicarCambioEstado = async () => {
+    const u = confirmarEstado
     try {
       await alternarActivoUsuario(u.id)
       toast({ tipo: "exito", titulo: u.activo ? "Usuario desactivado" : "Usuario activado" })
       await cargar()
     } catch (err) {
       toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+    } finally {
+      setConfirmarEstado(null)
     }
   }
 
@@ -200,7 +208,7 @@ export default function Usuarios() {
                     <td className="px-4 py-3">
                       <select
                         value={u.rol}
-                        onChange={(e) => cambiarRol(u, e.target.value)}
+                        onChange={(e) => setConfirmarRol({ usuario: u, nuevoRol: e.target.value })}
                         disabled={esMiCuenta}
                         className="text-xs font-cuerpo font-semibold rounded-lg border border-gray-200 px-2 py-1 bg-white focus:ring-2 focus:ring-primario outline-none capitalize disabled:opacity-50 disabled:cursor-not-allowed"
                         aria-label={`Rol de ${u.nombre}`}
@@ -230,7 +238,7 @@ export default function Usuarios() {
                         </button>
                         {/* Activar/desactivar */}
                         <button
-                          onClick={() => alternar(u)}
+                          onClick={() => setConfirmarEstado(u)}
                           className={cn(
                             "p-1.5 rounded-lg transition-colors",
                             u.activo ? "text-gray-400 hover:bg-amber-50 hover:text-advertencia" : "text-gray-400 hover:bg-green-50 hover:text-exito"
@@ -303,6 +311,40 @@ export default function Usuarios() {
         <div className="flex gap-2 justify-end">
           <Button variante="fantasma" onClick={() => setConfirmar(null)}>Cancelar</Button>
           <Button variante="peligro" onClick={confirmarEliminar}>Eliminar</Button>
+        </div>
+      </Modal>
+
+      {/* Modal confirmar cambio de rol */}
+      <Modal abierto={!!confirmarRol} onCerrar={() => setConfirmarRol(null)} titulo="Cambiar rol" tamaño="sm">
+        <p className="text-sm text-gray-600 font-cuerpo mb-5">
+          ¿Cambiar el rol de <strong>{confirmarRol?.usuario?.nombre}</strong> de{" "}
+          <strong className="capitalize">{confirmarRol?.usuario?.rol}</strong> a{" "}
+          <strong className="capitalize">{confirmarRol?.nuevoRol}</strong>?
+          Esto cambia los permisos de acceso del usuario.
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variante="fantasma" onClick={() => setConfirmarRol(null)}>Cancelar</Button>
+          <Button onClick={aplicarCambioRol}>Sí, cambiar rol</Button>
+        </div>
+      </Modal>
+
+      {/* Modal confirmar activar/desactivar */}
+      <Modal abierto={!!confirmarEstado} onCerrar={() => setConfirmarEstado(null)} titulo={confirmarEstado?.activo ? "Desactivar usuario" : "Activar usuario"} tamaño="sm">
+        <p className="text-sm text-gray-600 font-cuerpo mb-5">
+          {confirmarEstado?.activo ? (
+            <>¿Desactivar a <strong>{confirmarEstado?.nombre}</strong>? No podrá iniciar sesión hasta reactivarlo.</>
+          ) : (
+            <>¿Activar a <strong>{confirmarEstado?.nombre}</strong>? Podrá volver a iniciar sesión.</>
+          )}
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variante="fantasma" onClick={() => setConfirmarEstado(null)}>Cancelar</Button>
+          <Button
+            variante={confirmarEstado?.activo ? "peligro" : "primario"}
+            onClick={aplicarCambioEstado}
+          >
+            {confirmarEstado?.activo ? "Sí, desactivar" : "Sí, activar"}
+          </Button>
         </div>
       </Modal>
     </div>

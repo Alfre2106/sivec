@@ -33,6 +33,8 @@ export default function Funciones() {
   const [editando,     setEditando]     = useState(null) // función en edición o null
   const [form,         setForm]         = useState(formVacio())
   const [guardando,    setGuardando]    = useState(false)
+  // Confirmación de cambio de estado: { funcion, nuevoEstado } | null
+  const [confirmarEstado, setConfirmarEstado] = useState(null)
 
   function formVacio() {
     return { peliculaId: "", salaId: "", fecha: "", hora: "", precio: 20000 }
@@ -99,8 +101,9 @@ export default function Funciones() {
     }
   }
 
-  // ── Acciones de estado ───────────────────────────────────────────────────
-  const cambiarEstado = async (f, nuevoEstado) => {
+  // ── Acciones de estado (ejecutadas tras confirmar) ─────────────────────────
+  const aplicarCambioEstado = async () => {
+    const { funcion: f, nuevoEstado } = confirmarEstado
     try {
       if (nuevoEstado === "cancelada") await cancelarFuncion(f.id)
       else await actualizarFuncion(f.id, { estado: nuevoEstado })
@@ -108,6 +111,8 @@ export default function Funciones() {
       await cargar()
     } catch (err) {
       toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+    } finally {
+      setConfirmarEstado(null)
     }
   }
 
@@ -169,7 +174,7 @@ export default function Funciones() {
                       </button>
                       {f.estado === "activa" ? (
                         <button
-                          onClick={() => cambiarEstado(f, "cancelada")}
+                          onClick={() => setConfirmarEstado({ funcion: f, nuevoEstado: "cancelada" })}
                           className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-error transition-colors"
                           aria-label={`Cancelar función de ${f.pelicula?.titulo}`}
                           title="Cancelar"
@@ -178,7 +183,7 @@ export default function Funciones() {
                         </button>
                       ) : (
                         <button
-                          onClick={() => cambiarEstado(f, "activa")}
+                          onClick={() => setConfirmarEstado({ funcion: f, nuevoEstado: "activa" })}
                           className="p-1.5 rounded-lg text-gray-400 hover:bg-green-50 hover:text-exito transition-colors"
                           aria-label={`Reactivar función de ${f.pelicula?.titulo}`}
                           title="Reactivar"
@@ -239,6 +244,38 @@ export default function Funciones() {
             <Button type="submit" cargando={guardando}>{editando ? "Guardar cambios" : "Crear función"}</Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal confirmar cambio de estado */}
+      <Modal
+        abierto={!!confirmarEstado}
+        onCerrar={() => setConfirmarEstado(null)}
+        titulo={confirmarEstado?.nuevoEstado === "cancelada" ? "Cancelar función" : "Reactivar función"}
+        tamaño="sm"
+      >
+        <p className="text-sm text-gray-600 font-cuerpo mb-5">
+          {confirmarEstado?.nuevoEstado === "cancelada" ? (
+            <>
+              ¿Seguro que deseas <strong>cancelar</strong> la función de{" "}
+              <strong>{confirmarEstado?.funcion?.pelicula?.titulo}</strong>?
+              Las entradas vendidas de esta función quedarán <strong>anuladas</strong>.
+            </>
+          ) : (
+            <>
+              ¿Deseas <strong>reactivar</strong> la función de{" "}
+              <strong>{confirmarEstado?.funcion?.pelicula?.titulo}</strong>?
+            </>
+          )}
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variante="fantasma" onClick={() => setConfirmarEstado(null)}>Cancelar</Button>
+          <Button
+            variante={confirmarEstado?.nuevoEstado === "cancelada" ? "peligro" : "primario"}
+            onClick={aplicarCambioEstado}
+          >
+            {confirmarEstado?.nuevoEstado === "cancelada" ? "Sí, cancelar" : "Sí, reactivar"}
+          </Button>
+        </div>
       </Modal>
     </div>
   )
