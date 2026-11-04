@@ -8,12 +8,17 @@ import PanelLayout    from "@/layouts/PanelLayout"
 import ProtectedRoute from "./ProtectedRoute"
 
 // ── Páginas públicas ──────────────────────────────────────────────────────────
+import { lazy, Suspense } from "react"
 import Landing   from "@/pages/public/Landing"
 import Login     from "@/pages/public/Login"
 import Registro  from "@/pages/public/Registro"
-import Demo      from "@/pages/public/Demo"
-import Componentes from "@/pages/public/Componentes"
 import NoEncontrado from "@/pages/public/NoEncontrado"
+
+// Showcases internos (sistema de diseño y catálogo de prueba): solo en desarrollo.
+// Se cargan de forma diferida para que no entren al bundle de producción.
+const ES_DEV = import.meta.env.DEV
+const Demo = lazy(() => import("@/pages/public/Demo"))
+const Componentes = lazy(() => import("@/pages/public/Componentes"))
 import Eventos   from "@/pages/public/Eventos"
 import Contacto  from "@/pages/public/Contacto"
 
@@ -48,8 +53,12 @@ export default function AppRoutes() {
         <Route path="cartelera" element={<Cartelera />} />
         <Route path="eventos"   element={<Eventos />} />
         <Route path="contacto"  element={<Contacto />} />
-        <Route path="demo"      element={<Demo />} />
-        <Route path="componentes" element={<Componentes />} />
+        {ES_DEV && (
+          <>
+            <Route path="demo" element={<Suspense fallback={null}><Demo /></Suspense>} />
+            <Route path="componentes" element={<Suspense fallback={null}><Componentes /></Suspense>} />
+          </>
+        )}
 
         <Route path="funcion/:id/asientos" element={<SeleccionAsientos />} />
         <Route path="resumen"              element={<ResumenCompra />} />

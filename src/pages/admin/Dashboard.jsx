@@ -3,7 +3,7 @@
  * Métricas (StatCards) + gráfica de ventas por mes + ranking de funciones más vendidas.
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart,
 } from "recharts"
@@ -31,8 +31,12 @@ export default function Dashboard() {
   const [error,     setError]     = useState(null)
   const [confirmarReinicio, setConfirmarReinicio] = useState(false)
 
-  const cargar = () => {
+  const ctrlRef = useRef(null)
+
+  const cargar = useCallback(() => {
+    ctrlRef.current?.abort()
     const ctrl = new AbortController()
+    ctrlRef.current = ctrl
     setCargando(true)
     setError(null)
     Promise.all([
@@ -40,13 +44,15 @@ export default function Dashboard() {
       ventasPorMes({ signal: ctrl.signal }),
       funcionesMasVendidas({ signal: ctrl.signal }),
     ])
-      .then(([m, s, r]) => { setMetricas(m); setSerieMes(s); setRanking(r) })
-      .catch((e) => { if (!fueCancelada(e)) setError(mensajeDeError(e, "No pudimos cargar el panel.")) })
+      .then(([m, s, r]) => { if (!ctrl.signal.aborted) { setMetricas(m); setSerieMes(s); setRanking(r) } })
+      .catch((e) => { if (!fueCancelada(e) && !ctrl.signal.aborted) setError(mensajeDeError(e, "No pudimos cargar el panel.")) })
       .finally(() => { if (!ctrl.signal.aborted) setCargando(false) })
-    return () => ctrl.abort()
-  }
+  }, [])
 
-  useEffect(() => cargar(), [])
+  useEffect(() => {
+    cargar()
+    return () => ctrlRef.current?.abort()
+  }, [cargar])
 
   // Reinicia los datos mock de fábrica (borra localStorage y recarga)
   const reiniciarDatos = () => {

@@ -15,14 +15,14 @@ export const API_BASE_URL = String(import.meta.env.VITE_API_URL || URL_API_POR_D
 
 // Interruptor datos simulados / API real.
 // Solo el texto "false" activa la API real; si falta o tiene cualquier otro valor
-// se mantienen los datos simulados (así un error de tipeo nunca rompe la app).
-// OJO: durante la migración (fases I1 a I6) este valor NO se consulta, ver usaApi().
-export const USE_MOCK = String(import.meta.env.VITE_USE_MOCK ?? "true").trim().toLowerCase() !== "false"
+// Ya terminada la integración, el valor por defecto es la API real: solo el texto
+// "true" activa los datos simulados. Así, si la variable falta, la app usa el backend.
+export const USE_MOCK = String(import.meta.env.VITE_USE_MOCK ?? "false").trim().toLowerCase() === "true"
 
 /**
- * Servicios ya migrados a la API real. Se agregan fase a fase:
+ * Servicios migrados a la API real (todos, al terminar la integración I1–I6):
  *   I1 auth · I2 peliculas y funciones · I3 asientos y reservas · I4 compras y entradas
- *   I5 validaciones · I6 salas, usuarios y reportes
+ *   I5 validaciones · I6 salas, usuarios, funciones admin, peliculas admin y reportes
  */
 const SERVICIOS_MIGRADOS = new Set([
   "auth", "peliculas", "funciones", "asientos", "compras", "entradas", "validaciones",
@@ -32,15 +32,14 @@ const SERVICIOS_MIGRADOS = new Set([
 /**
  * ¿Este servicio usa la API real?
  *
- * REGLA DE LA MIGRACIÓN: un servicio migrado usa SIEMPRE la API y uno que aún no
- * se migra usa SIEMPRE los datos simulados, sin importar VITE_USE_MOCK. Así la app
- * nunca queda rota a medias (una pantalla real mezclada con datos de otro tipo).
- * En la Fase I7 se vuelve a conectar el interruptor: migrado && !USE_MOCK.
+ * Con la migración terminada, el interruptor VITE_USE_MOCK decide: si está en "true"
+ * (USE_MOCK) toda la app usa los datos simulados; si está en "false" usa la API real.
+ * Un servicio que no estuviera migrado nunca usaría la API (seguridad para el futuro).
  *
  * @param {string} servicio — nombre lógico (ej: "auth")
  * @returns {boolean}
  */
-export const usaApi = (servicio) => SERVICIOS_MIGRADOS.has(servicio)
+export const usaApi = (servicio) => SERVICIOS_MIGRADOS.has(servicio) && !USE_MOCK
 
 /**
  * Simula latencia de red (ms) para hacer el mock más realista.
