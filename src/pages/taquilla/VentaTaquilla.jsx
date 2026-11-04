@@ -8,12 +8,12 @@
  *  3 — Confirmar : resumen + botón "Registrar Venta" + QR de las entradas
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { CheckCircle2, Ticket, RotateCcw, Printer } from "lucide-react"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
 
 import { listarFunciones }  from "@/services/funcionesService"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
+import { formatearDiaHora, formatearFechaCortaHora, formatearFecha, formatearHora } from "@/utils/fechas"
 import { obtenerAsientos }  from "@/services/asientosService"
 import { crearCompra }      from "@/services/comprasService"
 import { useAuth }          from "@/context/AuthContext"
@@ -26,6 +26,11 @@ import Button        from "@/components/ui/Button"
 import Input         from "@/components/ui/Input"
 import Spinner       from "@/components/ui/Spinner"
 import Badge         from "@/components/ui/Badge"
+import MensajeError  from "@/components/ui/MensajeError"
+import EstadoVacio   from "@/components/ui/EstadoVacio"
+import Poster        from "@/components/Poster"
+import AvisoDisponibilidad from "@/components/AvisoDisponibilidad"
+import { estaAgotada } from "@/utils/disponibilidad"
 import { formatearPrecio } from "@/utils/formato"
 import { useTaquilla, PASOS } from "@/hooks/useTaquilla"
 import { cn } from "@/utils/cn"
@@ -35,19 +40,37 @@ function PasoFuncion({ onSeleccionar }) {
   const [funciones, setFunciones] = useState([])
   const [cargando,  setCargando]  = useState(true)
   const [busqueda,  setBusqueda]  = useState("")
+  const [error,     setError]     = useState(null)
+  const ctrl = useRef(null)
 
-  useEffect(() => {
-    listarFunciones()
+  const cargar = useCallback(() => {
+    ctrl.current?.abort()
+    const c = new AbortController()
+    ctrl.current = c
+    setCargando(true)
+    setError(null)
+    listarFunciones({ signal: c.signal })
       .then(setFunciones)
-      .finally(() => setCargando(false))
+      .catch((e) => {
+        if (fueCancelada(e)) return
+        setError(mensajeDeError(e, "No pudimos cargar las funciones."))
+      })
+      .finally(() => { if (!c.signal.aborted) setCargando(false) })
   }, [])
 
+  useEffect(() => {
+    cargar()
+    return () => ctrl.current?.abort()
+  }, [cargar])
+
+  const q = busqueda.toLowerCase()
   const filtradas = funciones.filter((f) =>
-    f.pelicula?.titulo.toLowerCase().includes(busqueda.toLowerCase()) ||
-    f.sala?.nombre.toLowerCase().includes(busqueda.toLowerCase())
+    (f.pelicula?.titulo ?? "").toLowerCase().includes(q) ||
+    (f.sala?.nombre ?? "").toLowerCase().includes(q)
   )
 
   if (cargando) return <div className="flex justify-center py-12"><Spinner texto="Cargando funciones..." /></div>
+  if (error) return <MensajeError className="py-8" mensaje={error} onReintentar={cargar} />
 
   return (
     <div className="flex flex-col gap-4">
@@ -58,37 +81,43 @@ function PasoFuncion({ onSeleccionar }) {
       />
 
       {filtradas.length === 0 ? (
-        <p className="text-center text-gray-400 font-cuerpo py-8">No hay funciones disponibles.</p>
+        <EstadoVacio
+          className="py-8"
+          icono={<Ticket />}
+          titulo="Sin funciones"
+          descripcion={funciones.length === 0 ? "No hay funciones disponibles." : "Ninguna función coincide con la búsqueda."}
+        />
       ) : (
         <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-1">
           {filtradas.map((f) => (
             <button
               key={f.id}
               onClick={() => onSeleccionar(f)}
+              disabled={estaAgotada(f)}
               className={cn(
                 "w-full tarjeta p-4 text-left flex items-center gap-4",
-                "hover:border-primario hover:shadow-boton transition-all duration-150 group"
+                "hover:border-primario hover:shadow-boton transition-all duration-150 group",
+                "disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:border-transparent disabled:hover:shadow-none"
               )}
             >
-              <img
+              <Poster
                 src={f.pelicula?.poster}
                 alt=""
                 className="w-10 h-14 rounded object-cover object-top shrink-0"
-                aria-hidden="true"
               />
               <div className="flex-1 min-w-0">
                 <p className="font-titulo font-bold text-gray-900 text-sm group-hover:text-primario transition-colors truncate">
                   {f.pelicula?.titulo}
                 </p>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500 font-cuerpo">
-                  <span>{format(new Date(f.fechaHora), "EEEE d MMM · h:mm a", { locale: es })}</span>
+                  <span>{formatearDiaHora(f.fechaHora)}</span>
                   <span>·</span>
                   <span>{f.sala?.nombre}</span>
                 </div>
               </div>
               <div className="shrink-0 text-right">
                 <span className="font-titulo font-bold text-primario text-sm">{formatearPrecio(f.precio)}</span>
-                <Badge variante="exito" className="block mt-1 text-[10px]">Disponible</Badge>
+                <AvisoDisponibilidad disponibles={f.asientosDisponibles} className="mt-1 text-[10px]" />
               </div>
             </button>
           ))}
@@ -116,11 +145,11 @@ function PasoAsientos({ funcion, seleccionados, onToggle }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3 p-3 bg-fondo-panel rounded-xl">
-        <img src={funcion.pelicula?.poster} alt="" className="w-10 h-14 rounded object-cover object-top shrink-0" aria-hidden="true" />
+        <Poster src={funcion.pelicula?.poster} alt="" className="w-10 h-14 rounded object-cover object-top shrink-0" />
         <div className="min-w-0">
           <p className="font-titulo font-bold text-gray-900 text-sm truncate">{funcion.pelicula?.titulo}</p>
           <p className="text-xs text-gray-500 font-cuerpo">
-            {format(new Date(funcion.fechaHora), "d MMM · h:mm a", { locale: es })} · {funcion.sala?.nombre}
+            {formatearFechaCortaHora(funcion.fechaHora)} · {funcion.sala?.nombre}
           </p>
         </div>
       </div>
@@ -209,11 +238,11 @@ function PasoConfirmar({ funcion, asientos, cliente, procesando, onConfirmar, co
       {/* Resumen */}
       <div className="tarjeta overflow-hidden">
         <div className="bg-noche-oscuro px-4 py-3 flex items-center gap-3">
-          <img src={funcion.pelicula?.poster} alt="" className="w-10 rounded object-cover object-top shrink-0" aria-hidden="true" />
+          <Poster src={funcion.pelicula?.poster} alt="" className="w-10 rounded object-cover object-top shrink-0" />
           <div>
             <p className="font-titulo font-bold text-white text-sm">{funcion.pelicula?.titulo}</p>
             <p className="text-gray-400 text-xs font-cuerpo">
-              {format(new Date(funcion.fechaHora), "d 'de' MMMM yyyy · h:mm a", { locale: es })} · {funcion.sala?.nombre}
+              {formatearFecha(funcion.fechaHora)} · {formatearHora(funcion.fechaHora)} · {funcion.sala?.nombre}
             </p>
           </div>
         </div>

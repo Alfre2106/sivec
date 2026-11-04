@@ -26,7 +26,7 @@ const LINKS_NAV = [
 ]
 
 export default function Navbar() {
-  const { autenticado, usuario, rol, logout } = useAuth()
+  const { autenticado, usuario, rol, logout, cargandoSesion } = useAuth()
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [perfilAbierto, setPerfilAbierto] = useState(false)
   const navigate = useNavigate()
@@ -65,7 +65,8 @@ export default function Navbar() {
             aria-label="SIVEC — Ir al inicio"
             onClick={cerrarMenus}
           >
-            <Logo tamaño="md" />
+            {/* En celulares muy angostos (≤340 px) el logo baja un poco para que quepa el botón de sesión */}
+            <Logo tamaño="md" className="max-[340px]:h-10" />
           </Link>
 
           {/* ── Links de escritorio ───────────────────────────────────────── */}
@@ -91,17 +92,21 @@ export default function Navbar() {
           </ul>
 
           {/* ── Acciones del lado derecho ─────────────────────────────────── */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
 
-            {!autenticado ? (
-              /* Botón Iniciar Sesión */
+            {cargandoSesion ? (
+              /* Validando la sesión guardada: evita el parpadeo de "Iniciar Sesión" */
+              <div className="w-24 md:w-32 h-8 rounded-lg bg-white/10 animate-pulse" aria-hidden="true" />
+            ) : !autenticado ? (
+              /* Botón Iniciar Sesión: visible SIEMPRE (también en celular, fuera del menú
+                 desplegable) para que el visitante sepa que debe iniciar sesión antes de comprar */
               <Button
                 onClick={() => { navigate("/login"); cerrarMenus() }}
                 tamaño="sm"
-                className="hidden md:inline-flex"
+                className="px-3 text-xs sm:text-sm whitespace-nowrap"
                 aria-label="Iniciar sesión"
               >
-                <User className="w-4 h-4" aria-hidden="true" />
+                <User className="w-4 h-4 hidden sm:block" aria-hidden="true" />
                 Iniciar Sesión
               </Button>
             ) : (
@@ -219,22 +224,11 @@ export default function Navbar() {
               </li>
             ))}
 
-            {/* Separador */}
-            <li className="h-px bg-white/10 my-1" aria-hidden="true" />
-
-            {!autenticado ? (
-              <li>
-                <Button
-                  onClick={() => { navigate("/login"); cerrarMenus() }}
-                  tamaño="sm"
-                  className="w-full"
-                >
-                  <User className="w-4 h-4" aria-hidden="true" />
-                  Iniciar Sesión
-                </Button>
-              </li>
-            ) : (
+            {/* Con sesión: acceso al panel y cierre de sesión.
+                (Sin sesión, "Iniciar Sesión" ya está visible en la barra superior.) */}
+            {autenticado && !cargandoSesion && (
               <>
+                <li className="h-px bg-white/10 my-1" aria-hidden="true" />
                 <li>
                   <Link
                     to={destioPanel}

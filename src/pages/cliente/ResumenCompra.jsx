@@ -11,8 +11,8 @@ import { useToast } from "@/components/ui/Toast"
 import { liberarAsientos } from "@/services/asientosService"
 import Countdown from "@/components/Countdown"
 import Button from "@/components/ui/Button"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import Poster from "@/components/Poster"
+import { formatearDiaFechaLarga, formatearHora } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
 
 export default function ResumenCompra() {
@@ -38,7 +38,6 @@ export default function ResumenCompra() {
   if (!funcionActual || !reserva) return null
 
   const f = funcionActual
-  const fecha = new Date(f.fechaHora)
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
@@ -54,7 +53,7 @@ export default function ResumenCompra() {
       <div className="tarjeta overflow-hidden mb-6">
         {/* Banner de la película */}
         <div className="bg-noche-oscuro px-5 py-4 flex items-center gap-4">
-          <img src={f.pelicula?.poster} alt={f.pelicula?.titulo} className="w-14 rounded-lg object-cover object-top shrink-0" />
+          <Poster src={f.pelicula?.poster} alt={f.pelicula?.titulo} className="w-14 rounded-lg object-cover object-top shrink-0" />
           <div>
             <h2 className="font-titulo font-bold text-white text-lg">{f.pelicula?.titulo}</h2>
             <p className="text-gray-400 text-xs font-cuerpo">{f.pelicula?.genero}</p>
@@ -64,8 +63,8 @@ export default function ResumenCompra() {
         <div className="px-5 py-5 flex flex-col gap-3">
           {/* Detalles */}
           {[
-            { icono: <Calendar />, label: "Fecha",    valor: format(fecha, "EEEE d 'de' MMMM yyyy", { locale: es }) },
-            { icono: <Clock />,    label: "Hora",     valor: format(fecha, "h:mm a", { locale: es }) },
+            { icono: <Calendar />, label: "Fecha",    valor: formatearDiaFechaLarga(f.fechaHora) },
+            { icono: <Clock />,    label: "Hora",     valor: formatearHora(f.fechaHora) },
             { icono: <MapPin />,   label: "Sala",     valor: f.sala?.nombre },
             { icono: <Armchair />, label: "Asientos", valor: asientosSeleccionados.map((a) => a.codigo).join(", ") },
           ].map(({ icono, label, valor }) => (

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react"
 import { Plus, Search, UserCheck, UserX, Mail, Pencil, Trash2 } from "lucide-react"
 import {
   listarUsuarios, crearUsuario, actualizarUsuario, alternarActivoUsuario, eliminarUsuario,
-} from "@/services/authService"
+} from "@/services/usuariosService"
 import { useAuth } from "@/context/AuthContext"
 import { useToast } from "@/components/ui/Toast"
 import Modal  from "@/components/ui/Modal"

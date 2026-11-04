@@ -11,6 +11,7 @@ import { obtenerFuncion } from "@/services/funcionesService"
 import QRTicket from "@/components/QRTicket"
 import Spinner from "@/components/ui/Spinner"
 import Button from "@/components/ui/Button"
+import { mismoId } from "@/utils/ids"
 
 export default function EntradaQR() {
   const { id } = useParams()
@@ -29,7 +30,7 @@ export default function EntradaQR() {
         let compra = location.state?.compra
         if (!compra) {
           const todas = await listarCompras()
-          compra = todas.find((c) => c.entradas?.some((e) => e.id === id))
+          compra = todas.find((c) => c.entradas?.some((e) => mismoId(e.id, id)))
         }
         if (!compra) throw new Error("Entrada no encontrada")
         const f = await obtenerFuncion(compra.funcionId)

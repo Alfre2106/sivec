@@ -12,7 +12,6 @@
 
 import { simularLatencia } from "./config"
 import { ASIENTOS_MOCK, generarAsientos } from "@/data/asientos"
-import { SALAS_MOCK } from "@/data/salas"
 import { obtenerFuncion } from "./funcionesService"
 import { cargar, guardar } from "./almacenamiento"
 
@@ -48,6 +47,21 @@ export const TTL_RESERVA_MS = 5 * 60 * 1000  // 5 minutos
 
 // ── Helpers internos ──────────────────────────────────────────────────────────
 
+/**
+ * PUENTE TEMPORAL (se elimina en la Fase I3, cuando el mapa venga de la API).
+ * La API real no entrega filas/columnas de la sala, solo su capacidad.
+ * Si la sala trae dimensiones (datos simulados) se usan; si no, se derivan
+ * de la capacidad: 72 → 6×12, 80 → 8×10.
+ */
+export const dimensionesDeSala = (funcion) => {
+  const sala = funcion?.sala
+  if (sala?.filas && sala?.columnas) return { filas: sala.filas, columnas: sala.columnas }
+  const capacidad = Number(sala?.capacidad ?? funcion?.capacidad)
+  if (!Number.isInteger(capacidad) || capacidad <= 0) return { filas: 6, columnas: 12 }
+  const columnas = capacidad % 12 === 0 ? 12 : capacidad % 10 === 0 ? 10 : Math.min(12, capacidad)
+  return { filas: Math.ceil(capacidad / columnas), columnas }
+}
+
 /** Genera asientos vacíos para una función si aún no existen en el estado. */
 const inicializarSiNecesario = async (funcionId) => {
   if (estadoAsientos[funcionId]) return
@@ -57,9 +71,7 @@ const inicializarSiNecesario = async (funcionId) => {
   let columnas = 12
   try {
     const funcion = await obtenerFuncion(funcionId)
-    const sala = funcion.sala ?? SALAS_MOCK[0]
-    filas    = sala.filas
-    columnas = sala.columnas
+    ;({ filas, columnas } = dimensionesDeSala(funcion))
   } catch {
     // Fallback silencioso si la función no existe
   }

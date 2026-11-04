@@ -13,6 +13,7 @@
 import { Clock, ShoppingCart } from "lucide-react"
 import Button from "@/components/ui/Button"
 import Badge from "@/components/ui/Badge"
+import Poster from "@/components/Poster"
 import { formatearDuracion } from "@/utils/formato"
 import { cn } from "@/utils/cn"
 
@@ -34,11 +35,12 @@ export default function MovieCard({ pelicula, onComprar, className }) {
     >
       {/* ── Póster ────────────────────────────────────────────────────── */}
       <div className="relative overflow-hidden aspect-[2/3] bg-gray-100 shrink-0">
-        <img
+        <Poster
           src={pelicula.poster}
           alt={`Póster de ${pelicula.titulo}`}
+          titulo={pelicula.titulo}
+          mostrarTitulo
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
         />
 
         {/* Degradado inferior al hacer hover */}
@@ -77,10 +79,12 @@ export default function MovieCard({ pelicula, onComprar, className }) {
         </p>
 
         {/* Duración */}
-        <div className="flex items-center gap-1 text-[11px] text-gray-500 font-cuerpo">
-          <Clock className="w-3 h-3 text-primario shrink-0" aria-hidden="true" />
-          <span>{formatearDuracion(pelicula.duracion)}</span>
-        </div>
+        {pelicula.duracion ? (
+          <div className="flex items-center gap-1 text-[11px] text-gray-500 font-cuerpo">
+            <Clock className="w-3 h-3 text-primario shrink-0" aria-hidden="true" />
+            <span>{formatearDuracion(pelicula.duracion)}</span>
+          </div>
+        ) : null}
 
         {/* Empuja el botón al fondo */}
         <div className="flex-1" />

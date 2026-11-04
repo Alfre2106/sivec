@@ -4,8 +4,7 @@
  */
 
 import { QRCodeSVG } from "qrcode.react"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import { formatearDiaFechaLarga, formatearHora, formatearFechaHora } from "@/utils/fechas"
 import { MapPin, Calendar, Clock, Armchair } from "lucide-react"
 import Badge from "@/components/ui/Badge"
 import { cn } from "@/utils/cn"
@@ -25,7 +24,6 @@ const VARIANTE_ESTADO = {
 export default function QRTicket({ entrada, funcion, className }) {
   if (!entrada || !funcion) return null
 
-  const fecha = new Date(funcion.fechaHora)
   const estaActiva = entrada.estado === "activa"
 
   return (
@@ -87,10 +85,10 @@ export default function QRTicket({ entrada, funcion, className }) {
         {/* Datos de la función */}
         <div className="flex flex-col gap-2 text-sm font-cuerpo">
           <Fila icono={<Calendar />} label="Fecha">
-            {format(fecha, "EEEE d 'de' MMMM 'de' yyyy", { locale: es })}
+            {formatearDiaFechaLarga(funcion?.fechaHora)}
           </Fila>
           <Fila icono={<Clock />} label="Hora">
-            {format(fecha, "h:mm a", { locale: es })}
+            {formatearHora(funcion?.fechaHora)}
           </Fila>
           <Fila icono={<MapPin />} label="Sala">
             {funcion.sala?.nombre ?? "—"}
@@ -103,7 +101,7 @@ export default function QRTicket({ entrada, funcion, className }) {
         {/* Aviso si ya fue usada */}
         {entrada.estado === "usada" && entrada.fechaUso && (
           <div className="bg-primario-suave rounded-lg px-3 py-2 text-xs text-primario-oscuro font-cuerpo text-center">
-            Canjeada el {format(new Date(entrada.fechaUso), "d MMM yyyy, h:mm a", { locale: es })}
+            Canjeada el {formatearFechaHora(entrada.fechaUso)}
           </div>
         )}
 

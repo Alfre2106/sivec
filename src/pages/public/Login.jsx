@@ -9,6 +9,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom"
 import { Mail, Lock, Eye, EyeOff } from "lucide-react"
 import { useAuth } from "@/context/AuthContext"
 import { useToast } from "@/components/ui/Toast"
+import { mensajeDeError } from "@/services/apiClient"
 import Button from "@/components/ui/Button"
 import Input from "@/components/ui/Input"
 import Logo from "@/components/Logo"
@@ -55,7 +56,8 @@ export default function Login() {
       else if (usuario.rol === "taquillero") navigate("/panel/taquilla", { replace: true })
       else navigate(desde, { replace: true })
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error al iniciar sesión", mensaje: err.message })
+      // Mensaje del servidor (credenciales inválidas, cuenta desactivada) o de falla de conexión
+      toast({ tipo: "error", titulo: "Error al iniciar sesión", mensaje: mensajeDeError(err, err?.message) })
     }
   }
 
@@ -68,7 +70,7 @@ export default function Login() {
       else if (usuario.rol === "taquillero") navigate("/panel/taquilla", { replace: true })
       else navigate(desde, { replace: true })
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+      toast({ tipo: "error", titulo: "Error", mensaje: mensajeDeError(err, err?.message) })
     }
   }
 

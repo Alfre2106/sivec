@@ -1,116 +1,85 @@
 /**
- * funcionesService.js — Servicio de gestión de funciones (proyecciones).
+ * funcionesService.js — Funciones (proyecciones), lectura pública.
  *
- * Regla de negocio aplicada aquí:
- *   - listarFunciones() y funcionesPorPelicula() solo devuelven funciones
- *     cuya fechaHora sea FUTURA (mayor que ahora) y estado "activa".
- *   - La función f_iniciada tiene fechaHora en el pasado → queda excluida
- *     del listado público aunque su estado sea "activa".
+ * Usa la API real (GET /funciones, GET /funciones/{id}) cuando usaApi("funciones")
+ * es true; si no, la lógica simulada de mock/funcionesMock.js. Los componentes
+ * siempre reciben la MISMA forma de función (la que ya usaban):
  *
- * HOY: Lee FUNCIONES_MOCK con latencia simulada.
- * DESPUÉS: GET /api/funciones, GET /api/funciones/:id, etc.
+ *   { id, peliculaId, salaId, fechaHora, fin, precio, estado, capacidad, asientosDisponibles,
+ *     pelicula: {...}, sala: { id, nombre, capacidad } }
+ *
+ * La API devuelve { id, pelicula: {...}, sala: { id, nombre }, inicio, fin, precio, estado,
+ * capacidad, asientos_disponibles }. La sala NO trae filas ni columnas.
+ *
+ * Reglas que ya aplica el servidor (no se repiten aquí):
+ *   - GET /funciones solo devuelve funciones activas, futuras y de películas activas.
+ *   - `estado` es el efectivo: "activa", "cancelada" o "finalizada".
+ *
+ * La gestión del administrador (crear, editar, cancelar) está en funcionesAdminService.js
+ * (aún simulado, Fase I6).
  */
 
-import { simularLatencia } from "./config"
-import { FUNCIONES_MOCK } from "@/data/funciones"
-import { PELICULAS_MOCK } from "@/data/peliculas"
-import { SALAS_MOCK } from "@/data/salas"
-import { cargar, guardar } from "./almacenamiento"
-
-// Estado mutable persistido en localStorage (sobrevive a recargas)
-let funciones = cargar("funciones", () => FUNCIONES_MOCK.map((f) => ({ ...f })))
-
-/** Persiste el estado actual de funciones. */
-const persistir = () => guardar("funciones", funciones)
-
-/** Enriquece una función con los objetos de película y sala */
-const enriquecer = (f) => ({
-  ...f,
-  pelicula: PELICULAS_MOCK.find((p) => p.id === f.peliculaId) ?? null,
-  sala:     SALAS_MOCK.find((s) => s.id === f.salaId) ?? null,
-})
-
-/** True si la función todavía no ha iniciado */
-const esFutura = (f) => new Date(f.fechaHora) > new Date()
+import { usaApi } from "./config"
+import { api } from "./apiClient"
+import { peliculaDesdeApi } from "./peliculasService"
+import * as mock from "./mock/funcionesMock"
 
 /**
- * Lista funciones activas Y futuras (para el cliente).
+ * Función de la API → función de la interfaz.
+ * @param {Object} f
+ */
+export function funcionDesdeApi(f) {
+  return {
+    id: f.id,
+    peliculaId: f.pelicula?.id ?? null,
+    salaId: f.sala?.id ?? null,
+    fechaHora: f.inicio,
+    fin: f.fin ?? null,
+    precio: f.precio,
+    estado: f.estado,
+    capacidad: f.capacidad ?? null,
+    // null si el servidor no lo envía; la interfaz solo avisa cuando es un número
+    asientosDisponibles: f.asientos_disponibles ?? null,
+    pelicula: f.pelicula ? peliculaDesdeApi(f.pelicula) : null,
+    sala: f.sala ? { id: f.sala.id, nombre: f.sala.nombre, capacidad: f.capacidad ?? null } : null,
+  }
+}
+
+/**
+ * Lista las funciones activas y futuras (para el cliente y la taquilla).
+ * @param {Object} [opciones]
+ * @param {AbortSignal} [opciones.signal]
  * @returns {Promise<Object[]>}
  */
-export async function listarFunciones() {
-  await simularLatencia(300)
-  return funciones
-    .filter((f) => f.estado === "activa" && esFutura(f))
-    .map(enriquecer)
+export async function listarFunciones({ signal } = {}) {
+  if (!usaApi("funciones")) return mock.listarFunciones()
+  const { funciones } = await api.get("/funciones", { signal })
+  return funciones.map(funcionDesdeApi)
 }
 
 /**
- * Lista TODAS las funciones (cualquier estado/fecha) — para administrador.
+ * Funciones activas y futuras de una película.
+ * @param {string|number} peliculaId
+ * @param {Object} [opciones]
+ * @param {AbortSignal} [opciones.signal]
  * @returns {Promise<Object[]>}
  */
-export async function listarTodasFunciones() {
-  await simularLatencia(300)
-  return funciones.map(enriquecer)
+export async function funcionesPorPelicula(peliculaId, { signal } = {}) {
+  if (!usaApi("funciones")) return mock.funcionesPorPelicula(peliculaId)
+  const { funciones } = await api.get("/funciones", { params: { pelicula_id: peliculaId }, signal })
+  return funciones.map(funcionDesdeApi)
 }
 
 /**
- * Obtiene una función por ID (sin filtro de fecha/estado).
- * @param {string} id
+ * Obtiene una función por ID, incluso si ya inició (se muestra con su estado).
+ * @param {string|number} id
+ * @param {Object} [opciones]
+ * @param {AbortSignal} [opciones.signal]
  * @returns {Promise<Object>}
- * @throws {Error} Si no existe
+ * @throws {ApiError} 404 FUNCION_NO_ENCONTRADA
  */
-export async function obtenerFuncion(id) {
-  await simularLatencia(200)
-  const f = funciones.find((fn) => fn.id === id)
-  if (!f) throw new Error(`Función con id "${id}" no encontrada.`)
-  return enriquecer(f)
-}
-
-/**
- * Funciones activas y futuras de una película específica.
- * @param {string} peliculaId
- * @returns {Promise<Object[]>}
- */
-export async function funcionesPorPelicula(peliculaId) {
-  await simularLatencia(250)
-  return funciones
-    .filter((f) => f.peliculaId === peliculaId && f.estado === "activa" && esFutura(f))
-    .map(enriquecer)
-}
-
-/**
- * Crea una nueva función (solo admin).
- * @param {Object} datos
- * @returns {Promise<Object>}
- */
-export async function crearFuncion(datos) {
-  await simularLatencia(400)
-  const nueva = { id: `f${Date.now()}`, estado: "activa", ...datos }
-  funciones.push(nueva)
-  persistir()
-  return enriquecer(nueva)
-}
-
-/**
- * Actualiza una función existente (solo admin).
- * @param {string} id
- * @param {Object} datos
- * @returns {Promise<Object>}
- */
-export async function actualizarFuncion(id, datos) {
-  await simularLatencia(350)
-  const idx = funciones.findIndex((f) => f.id === id)
-  if (idx === -1) throw new Error("Función no encontrada.")
-  funciones[idx] = { ...funciones[idx], ...datos }
-  persistir()
-  return enriquecer(funciones[idx])
-}
-
-/**
- * Cancela una función (estado → "cancelada").
- * @param {string} id
- * @returns {Promise<Object>}
- */
-export async function cancelarFuncion(id) {
-  return actualizarFuncion(id, { estado: "cancelada" })
+export async function obtenerFuncion(id, { signal } = {}) {
+  if (!usaApi("funciones")) return mock.obtenerFuncion(id)
+  const { funcion } = await api.get(`/funciones/${encodeURIComponent(id)}`, { signal })
+  return funcionDesdeApi(funcion)
 }

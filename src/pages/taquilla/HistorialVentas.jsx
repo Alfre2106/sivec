@@ -10,8 +10,8 @@ import { obtenerFuncion } from "@/services/funcionesService"
 import Spinner  from "@/components/ui/Spinner"
 import Badge    from "@/components/ui/Badge"
 import Input    from "@/components/ui/Input"
-import { format } from "date-fns"
-import { es }     from "date-fns/locale"
+import Poster from "@/components/Poster"
+import { formatearFechaHora } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
 import { cn } from "@/utils/cn"
 
@@ -112,12 +112,11 @@ export default function HistorialVentas() {
                   aria-controls={`detalle-${compra.id}`}
                 >
                   {/* Póster miniatura */}
-                  {funcion?.pelicula?.poster && (
-                    <img
+                  {funcion?.pelicula && (
+                    <Poster
                       src={funcion.pelicula.poster}
                       alt=""
                       className="w-9 h-12 rounded object-cover object-top shrink-0"
-                      aria-hidden="true"
                     />
                   )}
 
@@ -128,7 +127,7 @@ export default function HistorialVentas() {
                     </p>
                     <p className="text-xs text-gray-500 font-cuerpo mt-0.5">
                       {funcion
-                        ? format(new Date(funcion.fechaHora), "d MMM yyyy · h:mm a", { locale: es })
+                        ? formatearFechaHora(funcion.fechaHora)
                         : "—"}
                       {compra.clienteNombre && ` · ${compra.clienteNombre}`}
                     </p>
@@ -167,7 +166,7 @@ export default function HistorialVentas() {
                           {funcion?.sala?.nombre ?? "—"}
                         </Fila>
                         <Fila label="Fecha compra">
-                          {format(new Date(compra.fechaCompra), "d MMM yyyy · h:mm a", { locale: es })}
+                          {formatearFechaHora(compra.fechaCompra)}
                         </Fila>
                         <Fila label="Método pago">
                           <span className="capitalize">{compra.metodoPago ?? "tarjeta"}</span>

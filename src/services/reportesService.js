@@ -8,9 +8,9 @@
 
 import { simularLatencia } from "./config"
 import { listarCompras } from "./comprasService"
-import { listarTodasFunciones } from "./funcionesService"
+import { listarTodasFunciones } from "./funcionesAdminService"
 import { obtenerAsientos } from "./asientosService"
-import { listarUsuarios } from "./authService"
+import { listarUsuarios } from "./usuariosService"
 import { subMonths, format } from "date-fns"
 import { es } from "date-fns/locale"
 

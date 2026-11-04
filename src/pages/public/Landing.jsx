@@ -8,8 +8,13 @@ import { Ticket, Star, Shield, Clock } from "lucide-react"
 import Button from "@/components/ui/Button"
 import MovieCard from "@/components/MovieCard"
 import { listarPeliculas } from "@/services/peliculasService"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Spinner from "@/components/ui/Spinner"
+import MensajeError from "@/components/ui/MensajeError"
+import EstadoVacio from "@/components/ui/EstadoVacio"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
+import { useAuth } from "@/context/AuthContext"
+import { useToast } from "@/components/ui/Toast"
 
 // Características del servicio
 const FEATURES = [
@@ -21,14 +26,42 @@ const FEATURES = [
 
 export default function Landing() {
   const navigate = useNavigate()
+  const { autenticado } = useAuth()
+  const { toast } = useToast()
   const [peliculas, setPeliculas] = useState([])
+
+  // Sin sesión, "Comprar" lleva al login; al entrar se vuelve a la cartelera.
+  const comprar = () => {
+    if (!autenticado) {
+      toast({ tipo: "info", titulo: "Inicia sesión para comprar", mensaje: "Después podrás elegir tu función." })
+      navigate("/login", { state: { desde: { pathname: "/cartelera" } } })
+      return
+    }
+    navigate("/cartelera")
+  }
   const [cargando,  setCargando]  = useState(true)
+  const [error,     setError]     = useState(null)
+  const ctrl = useRef(null)
+
+  const cargar = useCallback(() => {
+    ctrl.current?.abort()
+    const c = new AbortController()
+    ctrl.current = c
+    setCargando(true)
+    setError(null)
+    listarPeliculas({ signal: c.signal })
+      .then((data) => setPeliculas(data.slice(0, 4)))
+      .catch((e) => {
+        if (fueCancelada(e)) return
+        setError(mensajeDeError(e, "No pudimos cargar la cartelera."))
+      })
+      .finally(() => { if (!c.signal.aborted) setCargando(false) })
+  }, [])
 
   useEffect(() => {
-    listarPeliculas()
-      .then((data) => setPeliculas(data.slice(0, 4)))
-      .finally(() => setCargando(false))
-  }, [])
+    cargar()
+    return () => ctrl.current?.abort()
+  }, [cargar])
 
   return (
     <div className="flex flex-col">
@@ -151,13 +184,22 @@ export default function Landing() {
           <div className="flex justify-center py-16">
             <Spinner tamaño="lg" texto="Cargando cartelera..." />
           </div>
+        ) : error ? (
+          <MensajeError className="py-10" mensaje={error} onReintentar={cargar} />
+        ) : peliculas.length === 0 ? (
+          <EstadoVacio
+            className="py-10"
+            icono={<Ticket />}
+            titulo="Cartelera vacía"
+            descripcion="Por ahora no hay películas en cartelera. Vuelve pronto."
+          />
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {peliculas.map((p) => (
               <MovieCard
                 key={p.id}
                 pelicula={p}
-                onComprar={() => navigate(`/cartelera`)}
+                onComprar={() => comprar(p)}
               />
             ))}
           </div>

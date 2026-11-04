@@ -10,8 +10,8 @@ import { misCompras } from "@/services/comprasService"
 import { obtenerFuncion } from "@/services/funcionesService"
 import Spinner from "@/components/ui/Spinner"
 import Badge from "@/components/ui/Badge"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import Poster from "@/components/Poster"
+import { formatearFechaHora, formatearFechaMedia } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
 
 const VARIANTE_ESTADO = { confirmada: "exito", cancelada: "error", pendiente: "advertencia" }
@@ -58,8 +58,8 @@ export default function MisCompras() {
             <div key={compra.id} className="tarjeta overflow-hidden">
               {/* Cabecera */}
               <div className="bg-noche-oscuro px-4 py-3 flex items-center gap-3">
-                {funcion?.pelicula?.poster && (
-                  <img src={funcion.pelicula.poster} alt="" className="w-10 rounded object-cover object-top shrink-0" aria-hidden="true" />
+                {funcion?.pelicula && (
+                  <Poster src={funcion.pelicula.poster} alt="" className="w-10 rounded object-cover object-top shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-titulo font-bold text-white text-sm truncate">
@@ -68,7 +68,7 @@ export default function MisCompras() {
                   {funcion && (
                     <p className="text-gray-400 text-xs font-cuerpo flex items-center gap-1">
                       <Calendar className="w-3 h-3" aria-hidden="true" />
-                      {format(new Date(funcion.fechaHora), "d MMM yyyy · h:mm a", { locale: es })}
+                      {formatearFechaHora(funcion.fechaHora)}
                       {" · "}{funcion.sala?.nombre}
                     </p>
                   )}
@@ -103,7 +103,7 @@ export default function MisCompras() {
               {/* Pie */}
               <div className="px-4 py-3 border-t border-gray-100 flex justify-between items-center">
                 <span className="text-xs text-gray-400 font-cuerpo">
-                  Comprado el {format(new Date(compra.fechaCompra), "d MMM yyyy", { locale: es })}
+                  Comprado el {formatearFechaMedia(compra.fechaCompra)}
                 </span>
                 <span className="font-titulo font-bold text-primario text-sm">{formatearPrecio(compra.total)}</span>
               </div>

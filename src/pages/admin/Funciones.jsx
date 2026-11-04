@@ -7,14 +7,15 @@ import { useEffect, useState } from "react"
 import { Plus, Pencil, Ban, CheckCircle2 } from "lucide-react"
 import {
   listarTodasFunciones, crearFuncion, actualizarFuncion, cancelarFuncion,
-} from "@/services/funcionesService"
-import { listarTodasPeliculas } from "@/services/peliculasService"
+} from "@/services/funcionesAdminService"
+import { listarTodasPeliculas } from "@/services/peliculasAdminService"
 import { listarSalas } from "@/services/salasService"
 import { useToast } from "@/components/ui/Toast"
 import Modal  from "@/components/ui/Modal"
 import Button from "@/components/ui/Button"
 import Input  from "@/components/ui/Input"
 import Badge  from "@/components/ui/Badge"
+import Poster from "@/components/Poster"
 import Spinner from "@/components/ui/Spinner"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -148,8 +149,8 @@ export default function Funciones() {
                 <tr key={f.id} className="border-b border-gray-50 hover:bg-fondo-panel/50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {f.pelicula?.poster && (
-                        <img src={f.pelicula.poster} alt="" className="w-7 h-10 rounded object-cover object-top shrink-0" aria-hidden="true" />
+                      {f.pelicula && (
+                        <Poster src={f.pelicula.poster} alt="" className="w-7 h-10 rounded object-cover object-top shrink-0" />
                       )}
                       <span className="font-semibold text-gray-800">{f.pelicula?.titulo ?? "—"}</span>
                     </div>

@@ -10,22 +10,26 @@
  *   useRefrescoAlEnfocar(() => cargarDatos())
  */
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 
 /**
  * @param {() => void} callback — función a ejecutar al recuperar el foco
+ *   (se usa siempre la versión más reciente, sin re-suscribir los listeners)
  */
 export function useRefrescoAlEnfocar(callback) {
+  const ultimo = useRef(callback)
+  useEffect(() => { ultimo.current = callback })
+
   useEffect(() => {
+    const alEnfocar = () => ultimo.current()
     const manejar = () => {
-      if (document.visibilityState === "visible") callback()
+      if (document.visibilityState === "visible") ultimo.current()
     }
-    window.addEventListener("focus", callback)
+    window.addEventListener("focus", alEnfocar)
     document.addEventListener("visibilitychange", manejar)
     return () => {
-      window.removeEventListener("focus", callback)
+      window.removeEventListener("focus", alEnfocar)
       document.removeEventListener("visibilitychange", manejar)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }

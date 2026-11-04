@@ -6,7 +6,7 @@
  * una agenda de eventos. Reutiliza los servicios existentes.
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Clock, MapPin, CalendarDays } from "lucide-react"
 import { listarFunciones } from "@/services/funcionesService"
@@ -17,16 +17,12 @@ import Button from "@/components/ui/Button"
 import Badge from "@/components/ui/Badge"
 import EstadoVacio from "@/components/ui/EstadoVacio"
 import MensajeError from "@/components/ui/MensajeError"
-import { format, isToday, isTomorrow } from "date-fns"
-import { es } from "date-fns/locale"
+import Poster from "@/components/Poster"
+import AvisoDisponibilidad from "@/components/AvisoDisponibilidad"
+import { estaAgotada } from "@/utils/disponibilidad"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
+import { claveDia, etiquetaDia, formatearHora } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
-
-/** Devuelve una etiqueta amigable para el día: "Hoy", "Mañana" o la fecha. */
-function etiquetaDia(fecha) {
-  if (isToday(fecha)) return "Hoy"
-  if (isTomorrow(fecha)) return "Mañana"
-  return format(fecha, "EEEE d 'de' MMMM", { locale: es })
-}
 
 export default function Eventos() {
   const navigate = useNavigate()
@@ -36,20 +32,31 @@ export default function Eventos() {
   const [cargando,  setCargando]  = useState(true)
   const [error,     setError]     = useState(null)
 
-  const cargar = () => {
-    setCargando(true)
+  const ctrl = useRef(null)
+
+  const cargar = useCallback((silencioso = false) => {
+    ctrl.current?.abort()
+    const c = new AbortController()
+    ctrl.current = c
+    if (!silencioso) setCargando(true)
     setError(null)
-    listarFunciones()
+    listarFunciones({ signal: c.signal })
       .then((data) => {
         // Ordenar por fecha ascendente
         setFunciones([...data].sort((a, b) => new Date(a.fechaHora) - new Date(b.fechaHora)))
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setCargando(false))
-  }
+      .catch((e) => {
+        if (fueCancelada(e)) return
+        setError(mensajeDeError(e, "No pudimos cargar la agenda."))
+      })
+      .finally(() => { if (!c.signal.aborted) setCargando(false) })
+  }, [])
 
-  useEffect(() => { cargar() }, [])
-  useRefrescoAlEnfocar(cargar)
+  useEffect(() => {
+    cargar()
+    return () => ctrl.current?.abort()
+  }, [cargar])
+  useRefrescoAlEnfocar(() => cargar(true))
 
   const irAAsientos = (funcion) => {
     seleccionarFuncion(funcion)
@@ -58,7 +65,7 @@ export default function Eventos() {
 
   // Agrupar funciones por día (clave = fecha YYYY-MM-DD)
   const porDia = funciones.reduce((acc, f) => {
-    const clave = format(new Date(f.fechaHora), "yyyy-MM-dd")
+    const clave = claveDia(f.fechaHora) ?? "sin-fecha"
     ;(acc[clave] ??= []).push(f)
     return acc
   }, {})
@@ -81,7 +88,7 @@ export default function Eventos() {
       {cargando ? (
         <div className="flex justify-center py-20"><Spinner tamaño="lg" texto="Cargando agenda..." /></div>
       ) : error ? (
-        <MensajeError mensaje={error} onReintentar={cargar} />
+        <MensajeError mensaje={error} onReintentar={() => cargar()} />
       ) : dias.length === 0 ? (
         <EstadoVacio
           icono={<CalendarDays />}
@@ -93,13 +100,14 @@ export default function Eventos() {
       ) : (
         <div className="flex flex-col gap-8 mt-8">
           {dias.map((dia) => {
-            const fecha = new Date(dia + "T00:00:00")
+            // Etiqueta calculada con la primera función del grupo (hora de Bogotá)
+            const etiqueta = etiquetaDia(porDia[dia][0].fechaHora)
             return (
-              <section key={dia} aria-label={`Funciones del ${etiquetaDia(fecha)}`}>
+              <section key={dia} aria-label={`Funciones del ${etiqueta}`}>
                 {/* Cabecera del día */}
                 <div className="flex items-center gap-3 mb-4 sticky top-16 bg-fondo/90 backdrop-blur-sm py-2 z-10">
                   <h2 className="font-titulo font-bold text-gray-900 capitalize">
-                    {etiquetaDia(fecha)}
+                    {etiqueta}
                   </h2>
                   <div className="flex-1 h-px bg-gray-200" aria-hidden="true" />
                   <Badge variante="neutro">{porDia[dia].length} función{porDia[dia].length !== 1 ? "es" : ""}</Badge>
@@ -112,11 +120,10 @@ export default function Eventos() {
                       key={f.id}
                       className="tarjeta p-4 flex items-center gap-4 hover:shadow-boton transition-shadow"
                     >
-                      <img
+                      <Poster
                         src={f.pelicula?.poster}
                         alt=""
                         className="w-12 h-16 rounded-lg object-cover object-top shrink-0"
-                        aria-hidden="true"
                       />
                       <div className="flex-1 min-w-0">
                         <p className="font-titulo font-bold text-gray-900 text-sm truncate">
@@ -126,17 +133,18 @@ export default function Eventos() {
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-gray-500 font-cuerpo">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5 text-primario" aria-hidden="true" />
-                            {format(new Date(f.fechaHora), "h:mm a", { locale: es })}
+                            {formatearHora(f.fechaHora)}
                           </span>
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3.5 h-3.5 text-primario" aria-hidden="true" />
                             {f.sala?.nombre}
                           </span>
                           <span className="font-semibold text-primario">{formatearPrecio(f.precio)}</span>
+                          <AvisoDisponibilidad disponibles={f.asientosDisponibles} className="text-[10px]" />
                         </div>
                       </div>
-                      <Button tamaño="sm" onClick={() => irAAsientos(f)} className="shrink-0">
-                        Comprar
+                      <Button tamaño="sm" onClick={() => irAAsientos(f)} disabled={estaAgotada(f)} className="shrink-0">
+                        {estaAgotada(f) ? "Agotada" : "Comprar"}
                       </Button>
                     </div>
                   ))}

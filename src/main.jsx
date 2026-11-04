@@ -3,7 +3,11 @@
  * Monta la app en el DOM con todos los proveedores globales.
  *
  * Orden (de exterior a interior):
- *  ErrorBoundary → BrowserRouter → AuthProvider → CartProvider → ToastProvider → AppRoutes
+ *  ErrorBoundary → BrowserRouter → ToastProvider → AuthProvider → CartProvider → AppRoutes
+ *
+ * ToastProvider va ANTES de AuthProvider porque la sesión avisa con un Toast cuando
+ * el servidor la da por vencida (401); y AuthProvider usa useNavigate, por eso va
+ * dentro de BrowserRouter.
  */
 
 import { StrictMode } from "react"
@@ -22,14 +26,13 @@ createRoot(document.getElementById("root")).render(
   <StrictMode>
     <ErrorBoundary>
       <BrowserRouter>
-        <AuthProvider>
-          <CartProvider>
-            {/* ToastProvider renderiza los toasts en un portal fuera del flujo */}
-            <ToastProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <CartProvider>
               <AppRoutes />
-            </ToastProvider>
-          </CartProvider>
-        </AuthProvider>
+            </CartProvider>
+          </AuthProvider>
+        </ToastProvider>
       </BrowserRouter>
     </ErrorBoundary>
   </StrictMode>

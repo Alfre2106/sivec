@@ -7,9 +7,18 @@ import { Link, useNavigate } from "react-router-dom"
 import { Mail, Lock, User, Phone } from "lucide-react"
 import { useAuth } from "@/context/AuthContext"
 import { useToast } from "@/components/ui/Toast"
+import { ApiError, mensajeDeError } from "@/services/apiClient"
 import Button from "@/components/ui/Button"
 import Input from "@/components/ui/Input"
 import Logo from "@/components/Logo"
+
+// Códigos de error de la API que corresponden a un campo concreto del formulario
+const CAMPO_POR_CODIGO = {
+  CORREO_YA_REGISTRADO: "email",
+  CORREO_INVALIDO: "email",
+  PASSWORD_CORTA: "password",
+  PASSWORD_LARGA: "password",
+}
 
 export default function Registro() {
   const { registrar, cargando } = useAuth()
@@ -30,6 +39,7 @@ export default function Registro() {
     if (!form.email)           e.email     = "El correo es requerido"
     if (!form.password)        e.password  = "La contraseña es requerida"
     else if (form.password.length < 6) e.password = "Mínimo 6 caracteres"
+    else if (form.password.length > 72) e.password = "Máximo 72 caracteres"
     if (form.password !== form.confirmar) e.confirmar = "Las contraseñas no coinciden"
     setErrores(e)
     return Object.keys(e).length === 0
@@ -48,7 +58,10 @@ export default function Registro() {
       toast({ tipo: "exito", titulo: "¡Cuenta creada!", mensaje: `Bienvenido, ${usuario.nombre.split(" ")[0]}` })
       navigate("/cartelera", { replace: true })
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error al registrarse", mensaje: err.message })
+      // Si el error corresponde a un campo (correo repetido, clave corta...), se marca ahí
+      const campo = err instanceof ApiError ? CAMPO_POR_CODIGO[err.codigo] : undefined
+      if (campo) setErrores((prev) => ({ ...prev, [campo]: err.mensaje }))
+      toast({ tipo: "error", titulo: "Error al registrarse", mensaje: mensajeDeError(err, err?.message) })
     }
   }
 

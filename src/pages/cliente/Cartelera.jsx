@@ -2,13 +2,12 @@
  * Cartelera.jsx — Listado de películas disponibles con sus funciones.
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Search, SlidersHorizontal } from "lucide-react"
 import { listarPeliculas } from "@/services/peliculasService"
 import { funcionesPorPelicula } from "@/services/funcionesService"
 import { useCart } from "@/context/CartContext"
-import { useToast } from "@/components/ui/Toast"
 import MovieCard from "@/components/MovieCard"
 import Spinner from "@/components/ui/Spinner"
 import Button from "@/components/ui/Button"
@@ -17,8 +16,11 @@ import Input from "@/components/ui/Input"
 import MensajeError from "@/components/ui/MensajeError"
 import EstadoVacio from "@/components/ui/EstadoVacio"
 import { Film } from "lucide-react"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import Poster from "@/components/Poster"
+import AvisoDisponibilidad from "@/components/AvisoDisponibilidad"
+import { estaAgotada } from "@/utils/disponibilidad"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
+import { formatearDiaCorto, formatearHora, formatearFechaCorta } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
 import { useRefrescoAlEnfocar } from "@/hooks/useRefrescoAlEnfocar"
 import { cn } from "@/utils/cn"
@@ -26,7 +28,6 @@ import { cn } from "@/utils/cn"
 export default function Cartelera() {
   const navigate = useNavigate()
   const { seleccionarFuncion } = useCart()
-  const { toast } = useToast()
 
   const [peliculas, setPeliculas]       = useState([])
   const [cargando, setCargando]         = useState(true)
@@ -35,50 +36,72 @@ export default function Cartelera() {
   const [peliculaModal, setPeliculaModal] = useState(null)  // película seleccionada para ver funciones
   const [funciones, setFunciones]       = useState([])
   const [cargandoFunc, setCargandoFunc] = useState(false)
+  const [errorFunc, setErrorFunc]       = useState(null)
+  const ctrlFunc = useRef(null)
   const [error, setError]               = useState(null)
 
-  // Carga/recarga la lista de películas (y refresca el panel de funciones si está abierto)
-  const cargarDatos = () => {
-    setCargando(true)
+  // Carga/recarga la lista de películas
+  const ctrlPeliculas = useRef(null)
+  const cargarDatos = useCallback((silencioso = false) => {
+    ctrlPeliculas.current?.abort()
+    const ctrl = new AbortController()
+    ctrlPeliculas.current = ctrl
+    if (!silencioso) setCargando(true)
     setError(null)
-    listarPeliculas()
+    listarPeliculas({ signal: ctrl.signal })
       .then(setPeliculas)
-      .catch((e) => setError(e.message))
-      .finally(() => setCargando(false))
-  }
+      .catch((e) => {
+        if (fueCancelada(e)) return
+        setError(mensajeDeError(e, "No pudimos cargar la cartelera."))
+      })
+      .finally(() => { if (!ctrl.signal.aborted) setCargando(false) })
+  }, [])
 
-  useEffect(() => { cargarDatos() }, [])
+  const cargarFunciones = useCallback((pelicula) => {
+    ctrlFunc.current?.abort()
+    const ctrl = new AbortController()
+    ctrlFunc.current = ctrl
+    setCargandoFunc(true)
+    setErrorFunc(null)
+    funcionesPorPelicula(pelicula.id, { signal: ctrl.signal })
+      .then(setFunciones)
+      .catch((e) => {
+        if (fueCancelada(e)) return
+        setFunciones([])
+        setErrorFunc(mensajeDeError(e, "No pudimos cargar las funciones."))
+      })
+      .finally(() => { if (!ctrl.signal.aborted) setCargandoFunc(false) })
+  }, [])
 
-  // Al volver a esta pestaña, recargar para reflejar cambios del admin (precios, etc.)
-  useRefrescoAlEnfocar(() => {
+  useEffect(() => {
     cargarDatos()
-    if (peliculaModal) {
-      funcionesPorPelicula(peliculaModal.id).then(setFunciones).catch(() => {})
-    }
-  })
+    return () => { ctrlPeliculas.current?.abort(); ctrlFunc.current?.abort() }
+  }, [cargarDatos])
 
+  // Al volver a esta pestaña, recargar para reflejar cambios del admin (precios, cupos, etc.)
+  useRefrescoAlEnfocar(() => {
+    cargarDatos(true)
+    if (peliculaModal) cargarFunciones(peliculaModal)
+  })
   // Géneros únicos para el filtro
-  const generos = ["Todos", ...new Set(peliculas.map((p) => p.genero.split(" / ")[0]))]
+  const generos = ["Todos", ...new Set(peliculas.map((p) => (p.genero ?? "").split(" / ")[0]).filter(Boolean))]
 
   const peliculasFiltradas = peliculas.filter((p) => {
     const coincideBusqueda = p.titulo.toLowerCase().includes(busqueda.toLowerCase())
-    const coincideGenero   = generoFiltro === "Todos" || p.genero.includes(generoFiltro)
+    const coincideGenero   = generoFiltro === "Todos" || (p.genero ?? "").includes(generoFiltro)
     return coincideBusqueda && coincideGenero
   })
 
-  const abrirFunciones = async (pelicula) => {
+  const abrirFunciones = (pelicula) => {
     setPeliculaModal(pelicula)
-    setCargandoFunc(true)
-    try {
-      const data = await funcionesPorPelicula(pelicula.id)
-      setFunciones(data)
-    } catch {
-      toast({ tipo: "error", titulo: "Error al cargar funciones" })
-    } finally {
-      setCargandoFunc(false)
-    }
+    setFunciones([])
+    cargarFunciones(pelicula)
   }
 
+  const cerrarPanel = () => {
+    ctrlFunc.current?.abort()
+    setPeliculaModal(null)
+  }
   const irAAsientos = (funcion) => {
     seleccionarFuncion(funcion)
     navigate(`/funcion/${funcion.id}/asientos`)
@@ -128,12 +151,14 @@ export default function Cartelera() {
           <Spinner tamaño="lg" texto="Cargando cartelera..." />
         </div>
       ) : error ? (
-        <MensajeError mensaje={error} onReintentar={cargarDatos} />
+        <MensajeError mensaje={error} onReintentar={() => cargarDatos()} />
       ) : peliculasFiltradas.length === 0 ? (
         <EstadoVacio
           icono={<Film />}
-          titulo="Sin resultados"
-          descripcion="No se encontraron películas con ese criterio de búsqueda."
+          titulo={peliculas.length === 0 ? "Cartelera vacía" : "Sin resultados"}
+          descripcion={peliculas.length === 0
+            ? "Por ahora no hay películas en cartelera. Vuelve pronto."
+            : "No se encontraron películas con ese criterio de búsqueda."}
         />
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
@@ -152,7 +177,7 @@ export default function Cartelera() {
         <>
           <div
             className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => setPeliculaModal(null)}
+            onClick={cerrarPanel}
             aria-hidden="true"
           />
           <aside
@@ -161,7 +186,7 @@ export default function Cartelera() {
           >
             {/* Cabecera */}
             <div className="sticky top-0 bg-noche-oscuro px-5 py-4 flex items-start gap-4">
-              <img
+              <Poster
                 src={peliculaModal.poster}
                 alt={peliculaModal.titulo}
                 className="w-16 rounded-lg object-cover object-top shrink-0"
@@ -173,7 +198,7 @@ export default function Cartelera() {
                 <p className="text-gray-400 text-xs font-cuerpo mt-0.5">{peliculaModal.genero}</p>
               </div>
               <button
-                onClick={() => setPeliculaModal(null)}
+                onClick={cerrarPanel}
                 className="text-gray-400 hover:text-white transition-colors shrink-0 text-2xl leading-none"
                 aria-label="Cerrar panel de funciones"
               >
@@ -190,10 +215,19 @@ export default function Cartelera() {
                 <div className="flex justify-center py-10">
                   <Spinner texto="Cargando funciones..." />
                 </div>
+              ) : errorFunc ? (
+                <MensajeError
+                  className="py-8"
+                  mensaje={errorFunc}
+                  onReintentar={() => cargarFunciones(peliculaModal)}
+                />
               ) : funciones.length === 0 ? (
-                <p className="text-gray-400 text-sm font-cuerpo py-6 text-center">
-                  No hay funciones disponibles para esta película.
-                </p>
+                <EstadoVacio
+                  className="py-8"
+                  icono={<Film />}
+                  titulo="Sin funciones"
+                  descripcion="No hay funciones disponibles para esta película."
+                />
               ) : (
                 <div className="flex flex-col gap-3">
                   {funciones.map((f) => (
@@ -204,17 +238,18 @@ export default function Cartelera() {
                       <div className="flex flex-col gap-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-titulo font-bold text-gray-900 text-sm">
-                            {format(new Date(f.fechaHora), "EEEE d MMM", { locale: es })}
+                            {formatearDiaCorto(f.fechaHora)}
                           </span>
                           <Badge variante="info" className="text-[10px]">{f.sala?.nombre}</Badge>
+                          <AvisoDisponibilidad disponibles={f.asientosDisponibles} className="text-[10px]" />
                         </div>
                         <span className="text-gray-500 text-xs font-cuerpo">
-                          {format(new Date(f.fechaHora), "h:mm a", { locale: es })}
+                          {formatearHora(f.fechaHora)}
                           {" · "}
                           <span className="font-semibold text-primario">{formatearPrecio(f.precio)}</span>
                         </span>
                       </div>
-                      <Button tamaño="sm" onClick={() => irAAsientos(f)} aria-label={`Seleccionar función del ${format(new Date(f.fechaHora), "d MMM")}`}>
+                      <Button tamaño="sm" onClick={() => irAAsientos(f)} disabled={estaAgotada(f)} aria-label={`Seleccionar función del ${formatearFechaCorta(f.fechaHora)}`}>
                         Elegir
                       </Button>
                     </div>

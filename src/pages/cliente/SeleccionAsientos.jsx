@@ -14,28 +14,34 @@ import { useAuth } from "@/context/AuthContext"
 import SeatMap from "@/components/SeatMap"
 import Spinner from "@/components/ui/Spinner"
 import Button from "@/components/ui/Button"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import MensajeError from "@/components/ui/MensajeError"
+import Poster from "@/components/Poster"
+import AvisoDisponibilidad from "@/components/AvisoDisponibilidad"
+import { formatearFechaLarga, formatearHora } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
+import { mismoId } from "@/utils/ids"
 
 export default function SeleccionAsientos() {
-  const { id } = useParams()
+  const { id: idUrl } = useParams()
+  // El id de la función es numérico en la API; si la URL trae basura, no se consulta nada
+  const id = Number(idUrl)
+  const idValido = Number.isInteger(id) && id > 0
   const navigate = useNavigate()
   const { usuario } = useAuth()
   const { toast } = useToast()
   const { funcionActual, asientosSeleccionados, toggleAsiento, seleccionarFuncion, activarReserva, totalSeleccionado } = useCart()
-  const { funcion, asientos, cargando, error } = useFuncion(id)
+  const { funcion, asientos, cargando, error, refrescar } = useFuncion(idValido ? id : undefined)
   const [reservando, setReservando] = useState(false)
 
   // Si llega directo por URL sin pasar por la cartelera, cargamos la función
   useEffect(() => {
-    if (funcion && (!funcionActual || funcionActual.id !== id)) {
+    if (funcion && (!funcionActual || !mismoId(funcionActual.id, id))) {
       seleccionarFuncion(funcion)
     }
   }, [funcion, funcionActual, id, seleccionarFuncion])
 
   // Verificar si la función ya inició
-  const yaInicio = funcion && new Date(funcion.fechaHora) <= new Date()
+  const yaInicio = !!funcion && (new Date(funcion.fechaHora) <= new Date() || funcion.estado === "finalizada")
   const cancelada = funcion?.estado === "cancelada"
 
   const manejarReservar = async () => {
@@ -59,8 +65,9 @@ export default function SeleccionAsientos() {
     }
   }
 
+  if (!idValido) return <MensajeError mensaje="La función que buscas no existe." onReintentar={() => navigate("/cartelera")} />
   if (cargando) return <div className="flex justify-center py-20"><Spinner tamaño="lg" texto="Cargando sala..." /></div>
-  if (error)   return <div className="text-center py-20 text-error font-cuerpo">{error}</div>
+  if (error)   return <MensajeError mensaje={error} onReintentar={refrescar} />
   if (!funcion) return null
 
   const f = funcion
@@ -80,7 +87,7 @@ export default function SeleccionAsientos() {
         <div>
           {/* Info de la función */}
           <div className="flex flex-wrap items-start gap-4 mb-6">
-            <img
+            <Poster
               src={f.pelicula?.poster}
               alt={f.pelicula?.titulo}
               className="w-16 rounded-lg object-cover object-top hidden sm:block shrink-0"
@@ -88,9 +95,10 @@ export default function SeleccionAsientos() {
             <div>
               <h1 className="font-titulo font-bold text-xl text-gray-900">{f.pelicula?.titulo}</h1>
               <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-500 font-cuerpo">
-                <span className="flex items-center gap-1"><Calendar className="w-4 h-4" aria-hidden="true" />{format(new Date(f.fechaHora), "d 'de' MMMM yyyy", { locale: es })}</span>
-                <span className="flex items-center gap-1"><Clock className="w-4 h-4" aria-hidden="true" />{format(new Date(f.fechaHora), "h:mm a", { locale: es })}</span>
+                <span className="flex items-center gap-1"><Calendar className="w-4 h-4" aria-hidden="true" />{formatearFechaLarga(f.fechaHora)}</span>
+                <span className="flex items-center gap-1"><Clock className="w-4 h-4" aria-hidden="true" />{formatearHora(f.fechaHora)}</span>
                 <span className="flex items-center gap-1"><MapPin className="w-4 h-4" aria-hidden="true" />{f.sala?.nombre}</span>
+                <AvisoDisponibilidad disponibles={f.asientosDisponibles} />
               </div>
             </div>
           </div>

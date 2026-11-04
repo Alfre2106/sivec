@@ -1,38 +1,28 @@
 /**
- * Perfil.jsx — Página de perfil del usuario autenticado.
+ * Perfil.jsx — Perfil del usuario autenticado (SOLO LECTURA).
+ *
+ * La API no tiene endpoint para editar el perfil propio, así que se muestran los datos
+ * que entrega GET /auth/yo. Si más adelante el backend agrega PUT /auth/yo, aquí se
+ * vuelve a habilitar la edición.
  */
 
-import { useState } from "react"
 import { useAuth } from "@/context/AuthContext"
-import { useToast } from "@/components/ui/Toast"
-import { actualizarPerfil } from "@/services/authService"
-import Button from "@/components/ui/Button"
-import Input from "@/components/ui/Input"
 import Badge from "@/components/ui/Badge"
-import { User, Mail, Phone, IdCard, Save } from "lucide-react"
+import { formatearFecha } from "@/utils/fechas"
+import { User, Mail, CalendarDays, ShieldCheck } from "lucide-react"
 
 const ROL_VARIANTE = { cliente: "info", taquillero: "advertencia", admin: "primario" }
+const ROL_ETIQUETA = { cliente: "Cliente", taquillero: "Taquillero", admin: "Administrador" }
 
 export default function Perfil() {
   const { usuario, rol } = useAuth()
-  const { toast } = useToast()
-  const [form, setForm]     = useState({ nombre: usuario?.nombre ?? "", telefono: usuario?.telefono ?? "", documento: usuario?.documento ?? "" })
-  const [guardando, setGuardando] = useState(false)
 
-  const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }))
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setGuardando(true)
-    try {
-      await actualizarPerfil(usuario.id, form)
-      toast({ tipo: "exito", titulo: "Perfil actualizado" })
-    } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
-    } finally {
-      setGuardando(false)
-    }
-  }
+  const datos = [
+    { icono: <User />,         etiqueta: "Nombre completo",   valor: usuario?.nombre },
+    { icono: <Mail />,         etiqueta: "Correo electrónico", valor: usuario?.email },
+    { icono: <ShieldCheck />,  etiqueta: "Rol",               valor: ROL_ETIQUETA[rol] ?? rol },
+    { icono: <CalendarDays />, etiqueta: "Miembro desde",     valor: formatearFecha(usuario?.fechaRegistro) },
+  ]
 
   return (
     <div className="max-w-lg mx-auto px-4 py-10">
@@ -43,46 +33,32 @@ export default function Perfil() {
         <div className="w-16 h-16 rounded-full bg-degradado-violeta flex items-center justify-center font-titulo font-extrabold text-white text-2xl shrink-0">
           {usuario?.nombre?.charAt(0).toUpperCase()}
         </div>
-        <div>
-          <p className="font-titulo font-bold text-gray-900 text-lg">{usuario?.nombre}</p>
-          <p className="text-gray-500 text-sm font-cuerpo">{usuario?.email}</p>
+        <div className="min-w-0">
+          <p className="font-titulo font-bold text-gray-900 text-lg truncate">{usuario?.nombre}</p>
+          <p className="text-gray-500 text-sm font-cuerpo truncate">{usuario?.email}</p>
           <Badge variante={ROL_VARIANTE[rol] ?? "neutro"} className="mt-1 capitalize">{rol}</Badge>
         </div>
       </div>
 
-      {/* Formulario de edición */}
+      {/* Información de la cuenta */}
       <div className="tarjeta p-6">
-        <h2 className="font-titulo font-semibold text-gray-800 mb-5">Editar información</h2>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Input
-            etiqueta="Nombre completo"
-            value={form.nombre}
-            onChange={cambiar("nombre")}
-            icono={<User className="w-4 h-4" />}
-          />
-          <Input
-            etiqueta="Correo electrónico"
-            value={usuario?.email ?? ""}
-            disabled
-            icono={<Mail className="w-4 h-4" />}
-          />
-          <Input
-            etiqueta="Teléfono"
-            value={form.telefono}
-            onChange={cambiar("telefono")}
-            icono={<Phone className="w-4 h-4" />}
-          />
-          <Input
-            etiqueta="Documento de identidad"
-            value={form.documento}
-            onChange={cambiar("documento")}
-            icono={<IdCard className="w-4 h-4" />}
-          />
-          <Button type="submit" cargando={guardando} className="mt-1">
-            <Save className="w-4 h-4" aria-hidden="true" />
-            Guardar cambios
-          </Button>
-        </form>
+        <h2 className="font-titulo font-semibold text-gray-800 mb-5">Información de la cuenta</h2>
+        <dl className="flex flex-col gap-4">
+          {datos.map(({ icono, etiqueta, valor }) => (
+            <div key={etiqueta} className="flex items-start gap-3">
+              <span className="text-primario mt-0.5 shrink-0 [&>svg]:w-4 [&>svg]:h-4" aria-hidden="true">
+                {icono}
+              </span>
+              <div className="min-w-0">
+                <dt className="text-xs text-gray-500 font-cuerpo">{etiqueta}</dt>
+                <dd className="text-sm text-gray-900 font-cuerpo font-medium break-words">{valor || "—"}</dd>
+              </div>
+            </div>
+          ))}
+        </dl>
+        <p className="text-xs text-gray-400 font-cuerpo mt-6 border-t border-gray-100 pt-4">
+          Por ahora los datos de la cuenta no se pueden modificar desde aquí.
+        </p>
       </div>
     </div>
   )
