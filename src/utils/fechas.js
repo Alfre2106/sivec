@@ -93,9 +93,19 @@ export function formatearDiaCorto(valor) {
   return p ? `${p.weekday} ${p.day} ${p.mesCorto}` : "—"
 }
 
-/** "miércoles 4 de noviembre de 2026" */
+/** Pone en mayúscula solo la primera letra del texto ("jueves…" → "Jueves…"). */
+export function capitalizarInicial(texto) {
+  if (!texto || texto === "—") return texto
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
+}
+
+/**
+ * "Jueves 5 de noviembre de 2026" — día de la semana con mayúscula inicial y el resto
+ * en minúscula (Intl.DateTimeFormat con es-CO y America/Bogota). Formato pedido para
+ * las pantallas que muestran la fecha completa de una función.
+ */
 export const formatearDiaFechaLarga = (valor) =>
-  formatearFecha(valor, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+  capitalizarInicial(formatearFecha(valor, { weekday: "long", day: "numeric", month: "long", year: "numeric" }))
 
 /** "3 nov 2026 · 10:44 PM" */
 export function formatearFechaHora(valor) {

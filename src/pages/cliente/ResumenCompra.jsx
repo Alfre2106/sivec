@@ -84,7 +84,7 @@ export default function ResumenCompra() {
             <div key={label} className="flex items-center gap-3 text-sm font-cuerpo">
               <span className="text-primario [&>svg]:w-4 [&>svg]:h-4 shrink-0" aria-hidden="true">{icono}</span>
               <span className="text-gray-500 w-16 shrink-0">{label}:</span>
-              <span className="text-gray-900 font-semibold capitalize">{valor}</span>
+              <span className="text-gray-900 font-semibold">{valor}</span>
             </div>
           ))}
 

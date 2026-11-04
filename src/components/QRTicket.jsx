@@ -122,7 +122,7 @@ function Fila({ icono, label, children }) {
         {icono}
       </span>
       <span className="text-gray-500 shrink-0 w-14">{label}</span>
-      <span className="text-gray-900 font-medium capitalize">{children}</span>
+      <span className="text-gray-900 font-medium">{children}</span>
     </div>
   )
 }

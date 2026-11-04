@@ -23,7 +23,7 @@ import Button from "@/components/ui/Button"
 import MensajeError from "@/components/ui/MensajeError"
 import Poster from "@/components/Poster"
 import AvisoDisponibilidad from "@/components/AvisoDisponibilidad"
-import { formatearFechaLarga, formatearHora } from "@/utils/fechas"
+import { formatearDiaFechaLarga, formatearHora } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
 import { guardarSeleccionPendiente, tomarSeleccionPendiente } from "@/utils/seleccionPendiente"
 
@@ -174,7 +174,7 @@ export default function SeleccionAsientos() {
             <div>
               <h1 className="font-titulo font-bold text-xl text-gray-900">{f.pelicula?.titulo}</h1>
               <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-500 font-cuerpo">
-                <span className="flex items-center gap-1"><Calendar className="w-4 h-4" aria-hidden="true" />{formatearFechaLarga(f.fechaHora)}</span>
+                <span className="flex items-center gap-1"><Calendar className="w-4 h-4" aria-hidden="true" />{formatearDiaFechaLarga(f.fechaHora)}</span>
                 <span className="flex items-center gap-1"><Clock className="w-4 h-4" aria-hidden="true" />{formatearHora(f.fechaHora)}</span>
                 <span className="flex items-center gap-1"><MapPin className="w-4 h-4" aria-hidden="true" />{f.sala?.nombre}</span>
                 <AvisoDisponibilidad disponibles={f.asientosDisponibles} />

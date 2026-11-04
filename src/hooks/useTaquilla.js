@@ -11,7 +11,8 @@ export function useTaquilla() {
   const [paso,        setPaso]        = useState(0)           // 0-3
   const [funcion,     setFuncion]     = useState(null)        // función seleccionada
   const [asientos,    setAsientos]    = useState([])          // asientos seleccionados
-  const [cliente,     setCliente]     = useState({ nombre: "", documento: "" })
+  const [cliente,     setCliente]     = useState({ nombre: "", documento: "", contacto: "" })
+  const [metodoPago,  setMetodoPago]  = useState("efectivo")  // efectivo por defecto
   const [procesando,  setProcesando]  = useState(false)
   const [compraFinal, setCompraFinal] = useState(null)        // resultado del paso 4
 
@@ -23,7 +24,8 @@ export function useTaquilla() {
     setPaso(0)
     setFuncion(null)
     setAsientos([])
-    setCliente({ nombre: "", documento: "" })
+    setCliente({ nombre: "", documento: "", contacto: "" })
+    setMetodoPago("efectivo")
     setCompraFinal(null)
   }
 
@@ -32,6 +34,7 @@ export function useTaquilla() {
     funcion,   setFuncion,
     asientos,  setAsientos,
     cliente,   setCliente,
+    metodoPago, setMetodoPago,
     procesando, setProcesando,
     compraFinal, setCompraFinal,
   }

@@ -16,12 +16,12 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { Html5Qrcode } from "html5-qrcode"
 import { CheckCircle2, XCircle, AlertTriangle, Ban, QrCode, Keyboard, RotateCcw, Camera, FlaskConical, ImageUp } from "lucide-react"
 import { validarEntrada } from "@/services/entradasService"
+import { mensajeDeError } from "@/services/apiClient"
 import { useToast }       from "@/components/ui/Toast"
 import Button  from "@/components/ui/Button"
 import Input   from "@/components/ui/Input"
 import Spinner from "@/components/ui/Spinner"
-import { format } from "date-fns"
-import { es }     from "date-fns/locale"
+import { formatearDiaFechaLarga, formatearHora, formatearFechaHora } from "@/utils/fechas"
 import { cn }     from "@/utils/cn"
 
 // ── Configuración visual por resultado ───────────────────────────────────────
@@ -47,6 +47,13 @@ const CONFIG_RESULTADO = {
     texto:  "text-red-800",
     icColor:"text-red-500",
   },
+  otra_funcion: {
+    icono:  <AlertTriangle className="w-20 h-20" aria-hidden="true" />,
+    titulo: "⚠️ Otra Función",
+    fondo:  "bg-amber-50 border-amber-300",
+    texto:  "text-amber-800",
+    icColor:"text-amber-500",
+  },
   anulada: {
     icono:  <Ban className="w-20 h-20" aria-hidden="true" />,
     titulo: "🚫 Entrada Anulada",
@@ -58,74 +65,159 @@ const CONFIG_RESULTADO = {
 
 // ── Escáner de cámara ────────────────────────────────────────────────────────
 const SCANNER_ID = "sivec-qr-scanner"
+const esDesarrollo = import.meta.env?.DEV
 
+// Estados internos de html5-qrcode (evitamos importar su enum para no acoplar):
+// 1 = NOT_STARTED, 2 = SCANNING, 3 = PAUSED. stop() solo es válido en 2 o 3.
+const ESTADOS_DETENIBLES = new Set([2, 3])
+
+/** Mensaje amable según el tipo de fallo de cámara. */
+function mensajeDeCamara(err) {
+  const nombre = err?.name ?? ""
+  if (nombre === "NotAllowedError" || nombre === "SecurityError")
+    return "Diste el permiso de cámara como denegado. Habilítalo en el navegador o usa Manual / Adjuntar QR."
+  if (nombre === "NotFoundError" || nombre === "OverconstrainedError")
+    return "No se encontró ninguna cámara. Usa Manual o Adjuntar QR."
+  if (nombre === "NotReadableError")
+    return "La cámara está en uso por otra aplicación. Ciérrala e inténtalo, o usa Manual / Adjuntar QR."
+  return "No se pudo iniciar la cámara. Usa Manual o Adjuntar QR."
+}
+
+/**
+ * EscanerQR — monta la cámara de html5-qrcode solo mientras `activo` es true.
+ *
+ * El ciclo de vida de html5-qrcode es asíncrono y frágil: start()/stop()/clear()
+ * devuelven promesas que rechazan si se llaman en el orden o estado equivocados
+ * (doble montaje de StrictMode, cambio rápido de pestaña, desmontaje antes de que
+ * start() resuelva). Aquí se encapsula para que NINGÚN fallo de limpieza escape al
+ * render de React (y por tanto al ErrorBoundary): todo va en try/catch o .catch().
+ */
 function EscanerQR({ onResultado, activo }) {
-  const scannerRef = useRef(null)
+  const scannerRef = useRef(null)   // instancia de Html5Qrcode viva
+  const startRef   = useRef(null)   // promesa del start() en curso
+  const montadoRef = useRef(true)   // false cuando el componente ya se desmontó
   const [error, setError] = useState(null)
-  const [iniciando, setIniciando] = useState(true)
-
-  const iniciar = useCallback(async () => {
-    if (!activo) return
-    setError(null)
-    setIniciando(true)
-    try {
-      const scanner = new Html5Qrcode(SCANNER_ID)
-      scannerRef.current = scanner
-      await scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (texto) => {
-          onResultado(texto)
-          // Detener después de un escaneo exitoso
-          scanner.stop().catch(() => {})
-        },
-        () => {} // Errores de frame — ignorar
-      )
-    } catch {
-      setError("No se pudo acceder a la cámara. Verifica los permisos del navegador.")
-    } finally {
-      setIniciando(false)
-    }
-  }, [activo, onResultado])
-
-  const detener = useCallback(() => {
-    if (scannerRef.current) {
-      scannerRef.current.stop().catch(() => {})
-      scannerRef.current.clear().catch(() => {})
-      scannerRef.current = null
-    }
-  }, [])
+  const [iniciando, setIniciando] = useState(false)
+  const [intento, setIntento] = useState(0)  // fuerza reintento manual
 
   useEffect(() => {
-    if (activo) iniciar()
-    return detener
-  }, [activo, iniciar, detener])
+    montadoRef.current = true
+    if (!activo) return undefined
+
+    // html5-qrcode gestiona un <video> interno; al desmontarlo rápido, el navegador
+    // emite "AbortError: play() request was interrupted" como promesa no capturada.
+    // Es inofensivo pero ensucia la consola, así que lo silenciamos mientras el escáner vive.
+    const ignorarAbortDeMedia = (e) => {
+      const motivo = e?.reason
+      if (motivo?.name === "AbortError" || /play\(\) request was interrupted/i.test(motivo?.message ?? "")) {
+        e.preventDefault()
+      }
+    }
+    window.addEventListener("unhandledrejection", ignorarAbortDeMedia)
+
+    let scanner = null
+    setError(null)
+    setIniciando(true)
+
+    // Protección contra doble start(): si ya hay instancia, no crear otra.
+    try {
+      scanner = new Html5Qrcode(SCANNER_ID)
+      scannerRef.current = scanner
+    } catch (e) {
+      if (esDesarrollo) console.warn("No se pudo crear el escáner:", e)
+      setIniciando(false)
+      setError(mensajeDeCamara(e))
+      return undefined
+    }
+
+    const alLeer = (texto) => {
+      // Detener tras una lectura exitosa, ignorando cualquier rechazo
+      detenerSeguro(scanner)
+      onResultado(texto)
+    }
+
+    const startPromise = scanner
+      .start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, alLeer, () => {})
+      .then(() => {
+        // Si nos desmontaron mientras arrancaba, apagar de inmediato
+        if (!montadoRef.current) { detenerSeguro(scanner); return }
+        setIniciando(false)
+      })
+      .catch((e) => {
+        if (esDesarrollo) console.warn("start() del escáner falló:", e)
+        if (montadoRef.current) { setIniciando(false); setError(mensajeDeCamara(e)) }
+      })
+    startRef.current = startPromise
+
+    // Limpieza: esperar a que start() termine ANTES de detener/limpiar
+    return () => {
+      montadoRef.current = false
+      const instancia = scanner
+      Promise.resolve(startRef.current)
+        .then(() => detenerSeguro(instancia))
+        .catch(() => {})
+        // dar tiempo a que el <video> termine su play() antes de quitar el guard
+        .finally(() => setTimeout(() => window.removeEventListener("unhandledrejection", ignorarAbortDeMedia), 1000))
+      if (scannerRef.current === scanner) scannerRef.current = null
+    }
+    // intento fuerza re-ejecución al reintentar
+  }, [activo, onResultado, intento])
+
+  const reintentar = () => { setError(null); setIntento((n) => n + 1) }
 
   return (
     <div className="flex flex-col items-center gap-3">
-      {iniciando && activo && (
+      {iniciando && activo && !error && (
         <div className="flex items-center gap-2 text-sm text-gray-500 font-cuerpo">
           <Spinner tamaño="sm" />
           Iniciando cámara...
         </div>
       )}
-      {error && (
-        <p className="text-sm text-error font-cuerpo text-center px-4">{error}</p>
-      )}
-      {/* Contenedor del escáner — html5-qrcode lo popula con un <video> */}
-      <div
-        id={SCANNER_ID}
-        className="w-full max-w-xs rounded-xl overflow-hidden border-2 border-primario/30 bg-gray-900"
-        style={{ minHeight: activo ? 280 : 0 }}
-        aria-label="Visor de cámara para escanear QR"
-      />
-      {!error && (
-        <p className="text-xs text-gray-500 font-cuerpo text-center">
-          Apunta la cámara al código QR de la entrada
-        </p>
+
+      {error ? (
+        <div className="w-full flex flex-col items-center gap-3 py-4 text-center" role="alert">
+          <Camera className="w-10 h-10 text-amber-500" aria-hidden="true" />
+          <p className="text-sm text-gray-600 font-cuerpo px-4">{error}</p>
+          <Button variante="secundario" tamaño="sm" onClick={reintentar}>
+            <RotateCcw className="w-4 h-4" aria-hidden="true" />
+            Reintentar
+          </Button>
+        </div>
+      ) : (
+        <>
+          {/* Contenedor del escáner — html5-qrcode lo popula con un <video> */}
+          <div
+            id={SCANNER_ID}
+            className="w-full max-w-xs rounded-xl overflow-hidden border-2 border-primario/30 bg-gray-900"
+            style={{ minHeight: 280 }}
+            aria-label="Visor de cámara para escanear QR"
+          />
+          <p className="text-xs text-gray-500 font-cuerpo text-center">
+            Apunta la cámara al código QR de la entrada
+          </p>
+        </>
       )}
     </div>
   )
+}
+
+/**
+ * Detiene y limpia una instancia de html5-qrcode sin que ningún fallo escape.
+ * Solo llama a stop() si el escáner está realmente escaneando o en pausa.
+ */
+function detenerSeguro(scanner) {
+  if (!scanner) return
+  try {
+    const estado = typeof scanner.getState === "function" ? scanner.getState() : null
+    const promesaStop = estado === null || ESTADOS_DETENIBLES.has(estado)
+      ? Promise.resolve(scanner.stop()).catch(() => {})
+      : Promise.resolve()
+    promesaStop.finally(() => {
+      try { scanner.clear() } catch { /* el contenedor ya pudo desmontarse */ }
+    })
+  } catch (e) {
+    if (esDesarrollo) console.warn("Limpieza del escáner ignorada:", e)
+  }
 }
 
 // ── Adjuntar imagen de QR ─────────────────────────────────────────────────────
@@ -135,32 +227,49 @@ function AdjuntarQR({ onResultado }) {
   const [procesando, setProcesando] = useState(false)
   const [error, setError] = useState(null)
   const [nombreArchivo, setNombreArchivo] = useState(null)
+  const [previa, setPrevia] = useState(null)   // object URL de la imagen elegida
 
   const manejarArchivo = async (e) => {
     const file = e.target.files?.[0]
+    e.target.value = ""  // permitir volver a subir el mismo archivo
     if (!file) return
     setNombreArchivo(file.name)
     setError(null)
     setProcesando(true)
+
+    // Mostrar la imagen elegida como previsualización
+    setPrevia((anterior) => { if (anterior) URL.revokeObjectURL(anterior); return URL.createObjectURL(file) })
+
+    // Cada decodificación usa su propia instancia sobre un contenedor VISIBLE
+    // (html5-qrcode no decodifica bien si el contenedor está en display:none).
+    let scanner = null
     try {
-      // html5-qrcode puede leer el QR directamente desde una imagen
-      const scanner = new Html5Qrcode(SCANNER_FILE_ID)
-      const texto = await scanner.scanFile(file, false)
-      await scanner.clear().catch(() => {})
-      onResultado(texto)
-    } catch {
-      setError("No se detectó ningún código QR en la imagen. Prueba con otra foto más nítida.")
+      scanner = new Html5Qrcode(SCANNER_FILE_ID, { verbose: false })
+      // showImage=true: pinta la imagen en el contenedor y decodifica sobre ella
+      const texto = await scanner.scanFile(file, true)
+      if (texto) { onResultado(texto); return }
+      setError("No se detectó ningún código QR en la imagen. Usa una foto más nítida o el modo Manual.")
+    } catch (err) {
+      if (esDesarrollo) console.warn("scanFile falló:", err)
+      setError("No se detectó ningún código QR en la imagen. Recórtala para que el QR ocupe casi todo, o usa el modo Manual.")
     } finally {
+      try { await scanner?.clear() } catch { /* contenedor ya limpio */ }
       setProcesando(false)
-      // Permitir volver a subir el mismo archivo
-      e.target.value = ""
     }
   }
 
+  // Liberar el object URL al desmontar
+  useEffect(() => () => { if (previa) URL.revokeObjectURL(previa) }, [previa])
+
   return (
     <div className="flex flex-col items-center gap-3">
-      {/* Contenedor oculto que html5-qrcode necesita para procesar el archivo */}
-      <div id={SCANNER_FILE_ID} className="hidden" aria-hidden="true" />
+      {/* Contenedor de trabajo de html5-qrcode: debe estar en el DOM y visible
+          (no display:none) para que pueda decodificar. Lo dejamos compacto. */}
+      <div
+        id={SCANNER_FILE_ID}
+        className={cn("w-full max-w-xs rounded-xl overflow-hidden [&_img]:w-full [&_img]:rounded-xl", !previa && "hidden")}
+        aria-hidden="true"
+      />
 
       <label
         className={cn(
@@ -216,22 +325,25 @@ function PantallaResultado({ resultado, onNuevo }) {
       <p className={cn("font-cuerpo text-sm", cfg.texto)}>{resultado.mensaje}</p>
 
       {/* Detalles extra según estado */}
-      {resultado.estado === "ya_usada" && resultado.entrada?.fechaUso && (
-        <div className={cn("tarjeta px-4 py-2 text-sm font-cuerpo w-full", cfg.texto)}>
+      {resultado.estado === "ya_usada" && resultado.primerUso?.fecha && (
+        <div className={cn("tarjeta px-4 py-3 text-sm font-cuerpo w-full", cfg.texto)}>
           Usada el{" "}
-          <strong>
-            {format(new Date(resultado.entrada.fechaUso), "d 'de' MMMM yyyy 'a las' h:mm a", { locale: es })}
-          </strong>
+          <strong>{formatearDiaFechaLarga(resultado.primerUso.fecha)}</strong>
+          {" a las "}
+          <strong>{formatearHora(resultado.primerUso.fecha)}</strong>
+          {resultado.primerUso.taquillero && (
+            <span className="block text-xs mt-1 opacity-80">Validada por {resultado.primerUso.taquillero}</span>
+          )}
         </div>
       )}
 
       {resultado.funcion && (
         <div className="tarjeta px-4 py-2 w-full text-left text-sm font-cuerpo text-gray-700">
-          <p className="font-semibold">{resultado.funcion.pelicula?.titulo}</p>
+          <p className="font-semibold">{resultado.funcion.pelicula ?? "—"}</p>
           <p className="text-xs text-gray-500">
-            {format(new Date(resultado.funcion.fechaHora), "d MMM yyyy · h:mm a", { locale: es })}
-            {" · "}{resultado.funcion.sala?.nombre}
-            {" · Asiento: "}<strong className="text-primario">{resultado.entrada?.asiento}</strong>
+            {resultado.funcion.inicio ? formatearFechaHora(resultado.funcion.inicio) : "—"}
+            {resultado.funcion.sala ? ` · ${resultado.funcion.sala}` : ""}
+            {resultado.entrada?.asiento ? <>{" · Asiento: "}<strong className="text-primario">{resultado.entrada.asiento}</strong></> : null}
           </p>
         </div>
       )}
@@ -262,7 +374,8 @@ export default function ValidarEntrada() {
       const res = await validarEntrada(codigoLimpio)
       setResultado(res)
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error de validación", mensaje: err.message })
+      // Solo un fallo real (red/servidor) llega aquí: los rechazos de negocio vienen con 200
+      toast({ tipo: "error", titulo: "Error de validación", mensaje: mensajeDeError(err, "No se pudo validar la entrada.") })
     } finally {
       setValidando(false)
     }
@@ -321,17 +434,14 @@ export default function ValidarEntrada() {
             ))}
           </div>
 
-          {/* Modo cámara */}
+          {/* Modo cámara (se desmonta al cambiar de pestaña → la cámara se apaga) */}
           {modo === "camara" && (
-            <EscanerQR
-              onResultado={(txt) => procesar(txt)}
-              activo={modo === "camara" && !resultado}
-            />
+            <EscanerQR onResultado={procesar} activo />
           )}
 
           {/* Modo adjuntar imagen */}
           {modo === "adjuntar" && (
-            <AdjuntarQR onResultado={(txt) => procesar(txt)} />
+            <AdjuntarQR onResultado={procesar} />
           )}
 
           {/* Modo manual */}
@@ -365,35 +475,12 @@ export default function ValidarEntrada() {
         </div>
       )}
 
-      {/* Códigos de prueba — bloque colapsable discreto, separado de la herramienta */}
+      {/* Nota: el código está en la entrada del cliente (QR o texto "SIV-…") */}
       {!resultado && (
-        <details className="tarjeta overflow-hidden group">
-          <summary className="flex items-center gap-2 px-5 py-3 cursor-pointer text-sm font-cuerpo text-gray-500 hover:bg-fondo-panel transition-colors list-none">
-            <FlaskConical className="w-4 h-4 text-primario shrink-0" aria-hidden="true" />
-            <span className="font-semibold">Códigos de prueba</span>
-            <span className="text-xs text-gray-400">(solo para la demostración)</span>
-            <span className="ml-auto text-gray-400 group-open:rotate-180 transition-transform" aria-hidden="true">▾</span>
-          </summary>
-          <div className="px-5 pb-4 pt-1 flex flex-col gap-1.5 border-t border-gray-100">
-            {[
-              { codigo: "SVC-2026-000001", desc: "Activa — debe marcar como usada", tono: "exito"       },
-              { codigo: "SVC-2026-000002", desc: "Ya usada — muestra fecha de uso",  tono: "advertencia" },
-              { codigo: "SVC-2026-000003", desc: "Anulada — función cancelada",      tono: "error"       },
-              { codigo: "SVC-2026-FALSO",  desc: "Inválida — no existe",             tono: "neutro"      },
-            ].map(({ codigo: c, desc }) => (
-              <button
-                key={c}
-                onClick={() => { setCodigo(c); setModo("manual") }}
-                className="flex items-center gap-3 text-left px-3 py-2 rounded-lg hover:bg-primario-suave transition-colors group/btn"
-              >
-                <span className="font-mono text-xs font-bold text-primario bg-primario-suave px-2 py-0.5 rounded shrink-0 group-hover/btn:bg-primario group-hover/btn:text-white transition-colors">
-                  {c}
-                </span>
-                <span className="text-xs text-gray-500 font-cuerpo">{desc}</span>
-              </button>
-            ))}
-          </div>
-        </details>
+        <div className="tarjeta px-5 py-3 flex items-center gap-2 text-xs text-gray-500 font-cuerpo">
+          <FlaskConical className="w-4 h-4 text-primario shrink-0" aria-hidden="true" />
+          <span>El código aparece bajo el QR de la entrada del cliente (formato <span className="font-mono">SIV-…</span>).</span>
+        </div>
       )}
     </div>
   )

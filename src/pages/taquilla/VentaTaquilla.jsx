@@ -9,15 +9,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { CheckCircle2, Ticket, RotateCcw, Printer } from "lucide-react"
+import { CheckCircle2, Ticket, RotateCcw, Printer, Banknote, CreditCard } from "lucide-react"
 
 import { listarFunciones }  from "@/services/funcionesService"
 import { fueCancelada, mensajeDeError } from "@/services/apiClient"
-import { formatearDiaHora, formatearFechaCortaHora, formatearFecha, formatearHora } from "@/utils/fechas"
-// Taquilla sigue simulada hasta la Fase I5: usa los mocks directamente
-import { obtenerAsientos }  from "@/services/mock/asientosMock"
-import { crearCompra }      from "@/services/mock/comprasMock"
-import { useAuth }          from "@/context/AuthContext"
+import { formatearDiaHora, formatearFechaCortaHora, formatearDiaFechaLarga, formatearHora } from "@/utils/fechas"
+import { obtenerAsientos, reservarAsientos } from "@/services/asientosService"
+import { crearCompra }      from "@/services/comprasService"
+import { ApiError }         from "@/services/apiClient"
 import { useToast }         from "@/components/ui/Toast"
 
 import PasoIndicador from "@/components/PasoIndicador"
@@ -129,17 +128,26 @@ function PasoFuncion({ onSeleccionar }) {
 }
 
 // ── Paso 1: Selección de asientos ────────────────────────────────────────────
-function PasoAsientos({ funcion, seleccionados, onToggle }) {
+function PasoAsientos({ funcion, seleccionados, onToggle, refSoltar }) {
   const [asientos, setAsientos] = useState([])
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
     if (!funcion) return
+    const ctrl = new AbortController()
     setCargando(true)
-    obtenerAsientos(funcion.id)
+    obtenerAsientos(funcion.id, { signal: ctrl.signal })
       .then(setAsientos)
-      .finally(() => setCargando(false))
+      .catch(() => {})
+      .finally(() => { if (!ctrl.signal.aborted) setCargando(false) })
+    return () => ctrl.abort()
   }, [funcion])
+
+  // Permite al padre refrescar el mapa (tras un choque de asientos)
+  useEffect(() => {
+    if (!refSoltar) return
+    refSoltar.current = () => obtenerAsientos(funcion.id).then(setAsientos).catch(() => {})
+  }, [refSoltar, funcion])
 
   if (cargando) return <div className="flex justify-center py-10"><Spinner texto="Cargando sala..." /></div>
 
@@ -172,33 +180,71 @@ function PasoAsientos({ funcion, seleccionados, onToggle }) {
   )
 }
 
-// ── Paso 2: Datos del cliente ─────────────────────────────────────────────────
-function PasoCliente({ cliente, onChange }) {
+// ── Paso 2: Datos del cliente y método de pago ───────────────────────────────
+const METODOS_PAGO = [
+  { id: "efectivo", label: "Efectivo", icono: Banknote },
+  { id: "tarjeta",  label: "Tarjeta",  icono: CreditCard },
+]
+
+function PasoCliente({ cliente, onChange, metodoPago, onMetodo }) {
   return (
     <div className="flex flex-col gap-5 max-w-md">
       <p className="text-sm text-gray-500 font-cuerpo">
-        Los datos del cliente son opcionales. Puedes completarlos para el registro o dejarlos en blanco.
+        El nombre del cliente es obligatorio para registrar la venta. El documento y el contacto son opcionales.
       </p>
       <Input
-        etiqueta="Nombre completo"
+        etiqueta="Nombre completo *"
         placeholder="Ana García"
         value={cliente.nombre}
         onChange={(e) => onChange({ ...cliente, nombre: e.target.value })}
         autoComplete="off"
       />
-      <Input
-        etiqueta="Documento de identidad (opcional)"
-        placeholder="123456789"
-        value={cliente.documento}
-        onChange={(e) => onChange({ ...cliente, documento: e.target.value })}
-        autoComplete="off"
-      />
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          etiqueta="Documento (opcional)"
+          placeholder="123456789"
+          value={cliente.documento}
+          onChange={(e) => onChange({ ...cliente, documento: e.target.value })}
+          autoComplete="off"
+        />
+        <Input
+          etiqueta="Contacto (opcional)"
+          placeholder="3001234567"
+          value={cliente.contacto}
+          onChange={(e) => onChange({ ...cliente, contacto: e.target.value })}
+          autoComplete="off"
+        />
+      </div>
+
+      {/* Método de pago — efectivo por defecto */}
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-cuerpo font-medium text-gray-700">Método de pago</span>
+        <div className="grid grid-cols-2 gap-3">
+          {METODOS_PAGO.map(({ id, label, icono: Icono }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onMetodo(id)}
+              aria-pressed={metodoPago === id}
+              className={cn(
+                "flex items-center justify-center gap-2 py-3 rounded-boton border-2 font-cuerpo font-semibold text-sm transition-colors",
+                metodoPago === id
+                  ? "border-primario bg-primario-suave text-primario"
+                  : "border-gray-200 text-gray-500 hover:border-primario/40"
+              )}
+            >
+              <Icono className="w-4 h-4" aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── Paso 3: Confirmar y registrar venta ──────────────────────────────────────
-function PasoConfirmar({ funcion, asientos, cliente, procesando, onConfirmar, compraFinal }) {
+function PasoConfirmar({ funcion, asientos, cliente, metodoPago, procesando, onConfirmar, compraFinal }) {
   if (compraFinal) {
     // Pantalla de éxito con QR
     return (
@@ -243,7 +289,7 @@ function PasoConfirmar({ funcion, asientos, cliente, procesando, onConfirmar, co
           <div>
             <p className="font-titulo font-bold text-white text-sm">{funcion.pelicula?.titulo}</p>
             <p className="text-gray-400 text-xs font-cuerpo">
-              {formatearFecha(funcion.fechaHora)} · {formatearHora(funcion.fechaHora)} · {funcion.sala?.nombre}
+              {formatearDiaFechaLarga(funcion.fechaHora)} · {formatearHora(funcion.fechaHora)} · {funcion.sala?.nombre}
             </p>
           </div>
         </div>
@@ -267,6 +313,11 @@ function PasoConfirmar({ funcion, asientos, cliente, procesando, onConfirmar, co
               </span>
             </div>
           )}
+          {/* Método de pago */}
+          <div className="flex items-center gap-3 text-sm font-cuerpo">
+            <span className="text-gray-500 w-24 shrink-0">Pago</span>
+            <span className="text-gray-800 font-medium capitalize">{metodoPago}</span>
+          </div>
           {/* Total */}
           <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
             <span className="font-titulo font-semibold text-gray-700">Total</span>
@@ -290,16 +341,17 @@ function PasoConfirmar({ funcion, asientos, cliente, procesando, onConfirmar, co
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function VentaTaquilla() {
-  const { usuario } = useAuth()
   const { toast }   = useToast()
   const {
     paso, avanzar, retroceder, reiniciar,
     funcion,  setFuncion,
     asientos, setAsientos,
     cliente,  setCliente,
+    metodoPago, setMetodoPago,
     procesando, setProcesando,
     compraFinal, setCompraFinal,
   } = useTaquilla()
+  const refrescarMapa = useRef(null)
 
   // Toggle asiento para el taquillero (sin CartContext — es independiente)
   const toggleAsiento = (asiento) => {
@@ -320,31 +372,60 @@ export default function VentaTaquilla() {
       toast({ tipo: "advertencia", titulo: "Selecciona al menos un asiento" })
       return
     }
+    if (!cliente.nombre.trim()) {
+      toast({ tipo: "advertencia", titulo: "Falta el nombre del cliente" })
+      return
+    }
     setProcesando(true)
+    const asientoIds = asientos.map((a) => a.id)
     try {
-      const compra = await crearCompra({
-        usuarioId:      usuario?.id ?? "taquilla",
-        funcionId:      funcion.id,
-        asientoIds:     asientos.map((a) => a.id),
-        codigosAsiento: asientos.map((a) => a.codigo),
-        total:          asientos.length * (funcion.precio ?? 0),
-        clienteNombre:  cliente.nombre  || null,
-        clienteDocumento: cliente.documento || null,
+      // 1) Reservar los asientos (todo o nada) y 2) venderlos en la misma función.
+      await reservarAsientos(funcion.id, asientoIds)
+      const { compra } = await crearCompra({
+        funcionId:  funcion.id,
+        asientoIds,
+        metodoPago,
         simularRechazo: false,
+        cliente: {
+          nombre: cliente.nombre.trim(),
+          ...(cliente.documento.trim() ? { documento: cliente.documento.trim() } : {}),
+          ...(cliente.contacto.trim() ? { contacto: cliente.contacto.trim() } : {}),
+        },
       })
       setCompraFinal(compra)
       toast({ tipo: "exito", titulo: "¡Venta registrada!", mensaje: `${compra.entradas.length} entradas generadas.` })
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error al registrar", mensaje: err.message })
+      await manejarErrorVenta(err)
     } finally {
       setProcesando(false)
     }
+  }
+
+  /** Traduce los errores de la venta y refresca el mapa cuando un asiento se perdió. */
+  const manejarErrorVenta = async (err) => {
+    const codigo = err instanceof ApiError ? err.codigo : null
+    if (codigo === "ASIENTO_NO_DISPONIBLE") {
+      toast({ tipo: "error", titulo: "Asiento no disponible", mensaje: "Alguien tomó un asiento. Revisa el mapa." })
+      await refrescarMapa.current?.()
+      setAsientos([])
+      return
+    }
+    if (codigo === "FUNCION_NO_DISPONIBLE") {
+      toast({ tipo: "error", titulo: "Función no disponible", mensaje: err.mensaje })
+      return
+    }
+    if (codigo === "CLIENTE_REQUERIDO") {
+      toast({ tipo: "advertencia", titulo: "Falta el nombre del cliente", mensaje: err.mensaje })
+      return
+    }
+    toast({ tipo: "error", titulo: "Error al registrar", mensaje: err.mensaje ?? err.message })
   }
 
   // Validación por paso para el botón "Siguiente"
   const puedeSeguir = () => {
     if (paso === 0) return !!funcion
     if (paso === 1) return asientos.length > 0
+    if (paso === 2) return !!cliente.nombre.trim()
     return true
   }
 
@@ -375,16 +456,18 @@ export default function VentaTaquilla() {
             funcion={funcion}
             seleccionados={asientos}
             onToggle={toggleAsiento}
+            refSoltar={refrescarMapa}
           />
         )}
         {paso === 2 && (
-          <PasoCliente cliente={cliente} onChange={setCliente} />
+          <PasoCliente cliente={cliente} onChange={setCliente} metodoPago={metodoPago} onMetodo={setMetodoPago} />
         )}
         {paso === 3 && funcion && (
           <PasoConfirmar
             funcion={funcion}
             asientos={asientos}
             cliente={cliente}
+            metodoPago={metodoPago}
             procesando={procesando}
             onConfirmar={confirmarVenta}
             compraFinal={compraFinal}

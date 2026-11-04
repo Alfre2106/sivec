@@ -39,10 +39,56 @@ export async function urlQrEntrada(id, { signal } = {}) {
 }
 
 /**
- * Valida una entrada en puerta. AÚN SIMULADO (se migra a POST /validaciones en la Fase I5).
- * @param {string} codigo
- * @param {string|number|null} [funcionIdActual]
+ * Resultado de validación para la interfaz.
+ * @typedef {Object} ResultadoValidacion
+ * @property {"valida"|"ya_usada"|"invalida"|"otra_funcion"|"anulada"} estado
+ * @property {boolean} accesoPermitido
+ * @property {string} mensaje
+ * @property {Object|null} entrada  — { codigo, fila, numero, asiento, estado }
+ * @property {Object|null} funcion  — { id, pelicula, sala, inicio }
+ * @property {Object|null} primerUso — { fecha, taquillero } (solo en ya_usada)
  */
-export async function validarEntrada(codigo, funcionIdActual = null) {
-  return mock.validarEntrada(codigo, funcionIdActual)
+
+/**
+ * Valida una entrada en puerta (POST /validaciones). El backend responde 200 en todos
+ * los resultados de negocio; aquí se normaliza a la forma de arriba. La interfaz distingue
+ * por `estado`. Un fallo real de red sí lanza ApiError.
+ *
+ * @param {string} codigo
+ * @param {number|string|null} [funcionId] — opcional: valida que sea de esa función
+ * @returns {Promise<ResultadoValidacion>}
+ */
+export async function validarEntrada(codigo, funcionId = null) {
+  if (!usaApi("validaciones")) {
+    const r = await mock.validarEntrada(codigo, funcionId)
+    return {
+      estado: r.estado,
+      accesoPermitido: r.estado === "valida",
+      mensaje: r.mensaje,
+      entrada: r.entrada ? { ...r.entrada, asiento: r.entrada.asiento } : null,
+      funcion: r.funcion ? { id: r.funcion.id, pelicula: r.funcion.pelicula?.titulo, sala: r.funcion.sala?.nombre, inicio: r.funcion.fechaHora } : null,
+      primerUso: r.entrada?.fechaUso ? { fecha: r.entrada.fechaUso, taquillero: null } : null,
+    }
+  }
+
+  const cuerpo = { codigo: String(codigo).trim().toUpperCase() }
+  if (funcionId != null) cuerpo.funcion_id = Number(funcionId)
+  const r = await api.post("/validaciones", cuerpo)
+
+  const entrada = r.entrada
+    ? { codigo: r.entrada.codigo, fila: r.entrada.fila, numero: r.entrada.numero,
+        asiento: `${r.entrada.fila ?? ""}${r.entrada.numero ?? ""}` || null, estado: r.entrada.estado }
+    : null
+  const funcion = r.funcion
+    ? { id: r.funcion.id, pelicula: r.funcion.pelicula, sala: r.funcion.sala, inicio: r.funcion.inicio }
+    : null
+
+  return {
+    estado: r.resultado,
+    accesoPermitido: r.acceso_permitido === true,
+    mensaje: r.mensaje,
+    entrada,
+    funcion,
+    primerUso: r.primer_uso ?? null,
+  }
 }

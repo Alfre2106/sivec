@@ -3,15 +3,16 @@
  * Muestra todas las compras con su función, asientos, total y estado de entradas.
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Search, Receipt, ChevronDown } from "lucide-react"
-// Historial de taquilla sigue simulado hasta la Fase I5
-import { listarCompras }  from "@/services/mock/comprasMock"
+import { listarVentas }   from "@/services/comprasService"
 import { obtenerFuncion } from "@/services/funcionesService"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
 import Spinner  from "@/components/ui/Spinner"
 import Badge    from "@/components/ui/Badge"
 import Input    from "@/components/ui/Input"
 import Poster from "@/components/Poster"
+import MensajeError from "@/components/ui/MensajeError"
 import { formatearFechaHora } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
 import { cn } from "@/utils/cn"
@@ -25,33 +26,47 @@ const VARIANTE_ESTADO_ENTRADA = {
 export default function HistorialVentas() {
   const [registros, setRegistros] = useState([])  // [{ compra, funcion }]
   const [cargando,  setCargando]  = useState(true)
+  const [error,     setError]     = useState(null)
   const [busqueda,  setBusqueda]  = useState("")
   const [expandido, setExpandido] = useState(null) // id de la compra expandida
+  const ctrl = useRef(null)
 
-  useEffect(() => {
-    const cargar = async () => {
-      try {
-        const compras = await listarCompras()
+  const cargar = useCallback(() => {
+    ctrl.current?.abort()
+    const c = new AbortController()
+    ctrl.current = c
+    setCargando(true)
+    setError(null)
+    listarVentas({ signal: c.signal })
+      .then(async (ventas) => {
         const enriquecidas = await Promise.all(
-          compras.map(async (c) => {
-            try { return { compra: c, funcion: await obtenerFuncion(c.funcionId) } }
-            catch { return { compra: c, funcion: null } }
+          ventas.map(async (compra) => {
+            if (!compra.funcionId) return { compra, funcion: null }
+            try { return { compra, funcion: await obtenerFuncion(compra.funcionId, { signal: c.signal }) } }
+            catch { return { compra, funcion: null } }
           })
         )
-        setRegistros(enriquecidas.reverse()) // más reciente primero
-      } finally {
-        setCargando(false)
-      }
-    }
-    cargar()
+        if (!c.signal.aborted) setRegistros(enriquecidas)
+      })
+      .catch((e) => {
+        if (fueCancelada(e)) return
+        setError(mensajeDeError(e, "No pudimos cargar el historial."))
+      })
+      .finally(() => { if (!c.signal.aborted) setCargando(false) })
   }, [])
+
+  useEffect(() => {
+    cargar()
+    return () => ctrl.current?.abort()
+  }, [cargar])
 
   const filtrados = registros.filter(({ compra, funcion }) => {
     const q = busqueda.toLowerCase()
+    const titulo = funcion?.pelicula?.titulo ?? compra.funcionResumen?.pelicula ?? ""
     return (
-      funcion?.pelicula?.titulo.toLowerCase().includes(q) ||
+      titulo.toLowerCase().includes(q) ||
       compra.entradas?.some((e) => e.codigo.toLowerCase().includes(q)) ||
-      (compra.clienteNombre ?? "").toLowerCase().includes(q)
+      (compra.cliente?.nombre ?? "").toLowerCase().includes(q)
     )
   })
 
@@ -60,6 +75,7 @@ export default function HistorialVentas() {
   const totalEntradas = registros.reduce((s, { compra }) => s + (compra.entradas?.length ?? 0), 0)
 
   if (cargando) return <div className="flex justify-center py-20"><Spinner tamaño="lg" texto="Cargando historial..." /></div>
+  if (error) return <MensajeError mensaje={error} onReintentar={cargar} />
 
   return (
     <div className="flex flex-col gap-6">
@@ -124,13 +140,11 @@ export default function HistorialVentas() {
                   {/* Info principal */}
                   <div className="flex-1 min-w-0 text-left">
                     <p className="font-titulo font-bold text-gray-900 text-sm truncate">
-                      {funcion?.pelicula?.titulo ?? "Función no disponible"}
+                      {funcion?.pelicula?.titulo ?? compra.funcionResumen?.pelicula ?? "Función no disponible"}
                     </p>
                     <p className="text-xs text-gray-500 font-cuerpo mt-0.5">
-                      {funcion
-                        ? formatearFechaHora(funcion.fechaHora)
-                        : "—"}
-                      {compra.clienteNombre && ` · ${compra.clienteNombre}`}
+                      {formatearFechaHora(funcion?.fechaHora ?? compra.funcionResumen?.inicio)}
+                      {compra.cliente?.nombre && ` · ${compra.cliente.nombre}`}
                     </p>
                   </div>
 
@@ -172,8 +186,11 @@ export default function HistorialVentas() {
                         <Fila label="Método pago">
                           <span className="capitalize">{compra.metodoPago ?? "tarjeta"}</span>
                         </Fila>
-                        {compra.clienteDocumento && (
-                          <Fila label="Documento">{compra.clienteDocumento}</Fila>
+                        {compra.cliente?.documento && (
+                          <Fila label="Documento">{compra.cliente.documento}</Fila>
+                        )}
+                        {compra.cliente?.contacto && (
+                          <Fila label="Contacto">{compra.cliente.contacto}</Fila>
                         )}
                       </div>
 
