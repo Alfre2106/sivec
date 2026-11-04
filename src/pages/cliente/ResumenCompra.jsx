@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import { Calendar, Clock, MapPin, Armchair } from "lucide-react"
 import { useCart } from "@/context/CartContext"
 import { useToast } from "@/components/ui/Toast"
-import { liberarAsientos } from "@/services/asientosService"
+import { cancelarReservas } from "@/services/asientosService"
 import Countdown from "@/components/Countdown"
 import Button from "@/components/ui/Button"
 import Poster from "@/components/Poster"
@@ -25,14 +25,27 @@ export default function ResumenCompra() {
     if (!funcionActual || !reserva) navigate("/cartelera", { replace: true })
   }, [funcionActual, reserva, navigate])
 
-  // Manejar expiración
+  // Manejar expiración: en el servidor la reserva ya venció sola, pero limpiamos por si acaso
   const manejarExpiracion = async () => {
-    if (funcionActual && reserva) {
-      await liberarAsientos(funcionActual.id, reserva.asientoIds).catch(() => {})
+    const idFuncion = funcionActual?.id
+    if (idFuncion && reserva) {
+      await cancelarReservas(idFuncion, reserva.asientoIds).catch(() => {})
     }
     limpiarCarrito()
     toast({ tipo: "advertencia", titulo: "Reserva expirada", mensaje: "Tus asientos volvieron a estar disponibles." })
-    navigate(`/funcion/${funcionActual?.id}/asientos`, { replace: true })
+    if (idFuncion) navigate(`/funcion/${idFuncion}/asientos`, { replace: true })
+    else navigate("/cartelera", { replace: true })
+  }
+
+  // Botón "Cancelar": libera la reserva en el servidor y vuelve al mapa
+  const cancelarYVolver = async () => {
+    const idFuncion = funcionActual?.id
+    if (idFuncion && reserva) {
+      await cancelarReservas(idFuncion, reserva.asientoIds).catch(() => {})
+    }
+    limpiarCarrito()
+    if (idFuncion) navigate(`/funcion/${idFuncion}/asientos`)
+    else navigate("/cartelera")
   }
 
   if (!funcionActual || !reserva) return null
@@ -88,7 +101,7 @@ export default function ResumenCompra() {
         <Button className="flex-1" onClick={() => navigate("/pago")} disabled={reservaExpirada}>
           Proceder al pago →
         </Button>
-        <Button variante="fantasma" onClick={() => { limpiarCarrito(); navigate(-1) }}>
+        <Button variante="fantasma" onClick={cancelarYVolver}>
           Cancelar
         </Button>
       </div>

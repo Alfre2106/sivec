@@ -1,11 +1,12 @@
 /**
- * useFuncion.js — Hook para cargar los datos de una función y su mapa de asientos.
+ * useFuncion.js — Carga una función y su mapa de asientos, y mantiene el mapa al día.
  *
- * Fase I2: la función viene de la API; los asientos siguen simulados.
- * - La carga normal trae función + asientos.
- * - El polling (cada 5 s) refresca solo los asientos y, si falla, no tumba la pantalla.
- * - Se cancela lo pendiente al cambiar de función o desmontar.
- * (La Fase I3 reescribe este hook para usar los asientos reales de la API.)
+ * - Carga inicial: función + asientos (con estados de carga y error).
+ * - Refresco automático del mapa cada 5 s, SIN solapar peticiones: si la anterior
+ *   sigue en curso, ese ciclo se omite.
+ * - Pausado mientras la pestaña está oculta; al volver a verse refresca de inmediato.
+ * - Un fallo de refresco no tumba la pantalla: mantiene el último mapa y marca `sinConexion`.
+ * - Al cambiar de función o desmontar: cancela lo pendiente (AbortController) y limpia el intervalo.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -13,60 +14,97 @@ import { obtenerFuncion } from "@/services/funcionesService"
 import { obtenerAsientos } from "@/services/asientosService"
 import { fueCancelada, mensajeDeError } from "@/services/apiClient"
 
-const INTERVALO_POLLING_MS = 5000
+export const INTERVALO_REFRESCO_MS = 5000
 
 /**
- * @param {number|string|undefined} funcionId
- * @returns {{ funcion, asientos, cargando, error, refrescar }}
+ * @param {number|string|undefined} funcionId — undefined = no consulta nada
+ * @returns {{ funcion, asientos, cargando, error, sinConexion, refrescar, refrescarAsientos }}
  */
 export function useFuncion(funcionId) {
-  const [funcion,   setFuncion]   = useState(null)
-  const [asientos,  setAsientos]  = useState([])
-  const [cargando,  setCargando]  = useState(false)
-  const [error,     setError]     = useState(null)
-  const ctrlRef = useRef(null)
+  const [funcion,     setFuncion]     = useState(null)
+  const [asientos,    setAsientos]    = useState([])
+  const [cargando,    setCargando]    = useState(funcionId !== undefined)
+  const [error,       setError]       = useState(null)
+  const [sinConexion, setSinConexion] = useState(false)
 
-  const cargar = useCallback(async (silencioso = false) => {
+  const controlador = useRef(null)   // petición en curso (carga o refresco)
+  const enCurso     = useRef(false)  // ¿hay una petición en vuelo?
+
+  /** Carga completa: función + mapa. */
+  const cargar = useCallback(async () => {
     if (funcionId === undefined || funcionId === null) return
-    ctrlRef.current?.abort()
+    controlador.current?.abort()
     const ctrl = new AbortController()
-    ctrlRef.current = ctrl
-
-    if (!silencioso) {
-      setCargando(true)
-      setError(null)
-    }
+    controlador.current = ctrl
+    enCurso.current = true
+    setCargando(true)
+    setError(null)
     try {
-      if (silencioso) {
-        setAsientos(await obtenerAsientos(funcionId))
-      } else {
-        const f = await obtenerFuncion(funcionId, { signal: ctrl.signal })
-        const a = await obtenerAsientos(funcionId)
-        if (ctrl.signal.aborted) return
-        setFuncion(f)
-        setAsientos(a)
-      }
+      const [f, a] = await Promise.all([
+        obtenerFuncion(funcionId, { signal: ctrl.signal }),
+        obtenerAsientos(funcionId, { signal: ctrl.signal }),
+      ])
+      if (ctrl.signal.aborted) return
+      setFuncion(f)
+      setAsientos(a)
+      setSinConexion(false)
     } catch (e) {
       if (fueCancelada(e) || ctrl.signal.aborted) return
-      if (!silencioso) setError(mensajeDeError(e, "No pudimos cargar la función."))
+      setError(mensajeDeError(e, "No pudimos cargar la función."))
     } finally {
-      if (!silencioso && !ctrl.signal.aborted) setCargando(false)
+      if (controlador.current === ctrl) {
+        enCurso.current = false
+        setCargando(false)
+      }
+    }
+  }, [funcionId])
+
+  /** Refresca solo el mapa. Devuelve la lista nueva (o null si se omitió o falló). */
+  const refrescarAsientos = useCallback(async () => {
+    if (funcionId === undefined || funcionId === null) return null
+    if (enCurso.current) return null            // no solapar peticiones
+    const ctrl = new AbortController()
+    controlador.current = ctrl
+    enCurso.current = true
+    try {
+      const a = await obtenerAsientos(funcionId, { signal: ctrl.signal })
+      if (ctrl.signal.aborted) return null
+      setAsientos(a)
+      setSinConexion(false)
+      return a
+    } catch (e) {
+      if (fueCancelada(e) || ctrl.signal.aborted) return null
+      setSinConexion(true)
+      return null
+    } finally {
+      if (controlador.current === ctrl) enCurso.current = false
     }
   }, [funcionId])
 
   useEffect(() => {
+    // Nueva función: se parte de cero
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFuncion(null)
     setAsientos([])
+    setSinConexion(false)
     cargar()
+
     const intervalo = setInterval(() => {
-      if (document.visibilityState === "visible") cargar(true)
-    }, INTERVALO_POLLING_MS)
+      if (document.visibilityState === "visible") refrescarAsientos()
+    }, INTERVALO_REFRESCO_MS)
+
+    const alVolverAVer = () => {
+      if (document.visibilityState === "visible") refrescarAsientos()
+    }
+    document.addEventListener("visibilitychange", alVolverAVer)
+
     return () => {
       clearInterval(intervalo)
-      ctrlRef.current?.abort()
+      document.removeEventListener("visibilitychange", alVolverAVer)
+      controlador.current?.abort()
+      enCurso.current = false
     }
-  }, [cargar])
+  }, [cargar, refrescarAsientos])
 
-  return { funcion, asientos, cargando, error, refrescar: () => cargar() }
+  return { funcion, asientos, cargando, error, sinConexion, refrescar: cargar, refrescarAsientos }
 }

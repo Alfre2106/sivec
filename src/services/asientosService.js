@@ -1,192 +1,113 @@
 /**
- * asientosService.js — Servicio de gestión de asientos.
+ * asientosService.js — Mapa de asientos y reservas.
  *
- * Estados válidos: "disponible" | "reservado" | "vendido"
- * "Seleccionado" es solo visual en CartContext, nunca llega aquí.
+ * Con usaApi("asientos") usa la API real:
+ *   GET    /funciones/{id}/asientos       → mapa (con token marca los asientos propios: mio)
+ *   POST   /reservas                      → reserva todo o nada (5 min)
+ *   GET    /reservas/mias?funcion_id=     → mis reservas vigentes
+ *   POST   /reservas/cancelar             → libera todas mis reservas de una función
+ * Si no, usa la lógica simulada de mock/asientosMock.js.
  *
- * TTL de reserva: 5 minutos.
- *
- * HOY: Opera en memoria con ASIENTOS_MOCK.
- * DESPUÉS: GET/POST /api/funciones/:id/asientos  +  WebSocket/SSE para polling.
+ * Forma de un asiento para la interfaz (la misma que ya usaba SeatMap):
+ *   { id, funcionId, codigo: "A1", fila: "A", columna: 1, estado, mio, venceEn }
+ *   estado: "disponible" | "reservado" | "vendido"
  */
 
-import { simularLatencia } from "./config"
-import { ASIENTOS_MOCK, generarAsientos } from "@/data/asientos"
-import { obtenerFuncion } from "./funcionesService"
-import { cargar, guardar } from "./almacenamiento"
+import { usaApi } from "./config"
+import { api } from "./apiClient"
+import * as mock from "./mock/asientosMock"
 
-// ── Estado de asientos persistido en localStorage ─────────────────────────────
-const estadoAsientos = cargar("asientos", () => {
-  const inicial = {}
-  for (const [fid, lista] of Object.entries(ASIENTOS_MOCK)) {
-    inicial[fid] = lista.map((a) => ({ ...a }))
-  }
-  return inicial
-})
-
-/** Persiste el estado de todos los asientos. */
-const persistir = () => guardar("asientos", estadoAsientos)
-
-// Al cargar, cualquier asiento que quedó "reservado" de una sesión previa
-// (sin reserva activa viva) se devuelve a "disponible": las reservas no persisten.
-for (const lista of Object.values(estadoAsientos)) {
-  for (const a of lista) {
-    if (a.estado === "reservado") {
-      a.estado = "disponible"
-      a.reservadoHasta = null
-    }
-  }
-}
-persistir()
-
-// Registro de reservas activas: { asientoId: { expira: Date, usuarioId } }
-// Las reservas NO se persisten: son efímeras (TTL 5 min) y propias de cada sesión.
-const reservasActivas = {}
-
-export const TTL_RESERVA_MS = 5 * 60 * 1000  // 5 minutos
-
-// ── Helpers internos ──────────────────────────────────────────────────────────
+export const MAX_ASIENTOS_POR_RESERVA = 8
 
 /**
- * PUENTE TEMPORAL (se elimina en la Fase I3, cuando el mapa venga de la API).
- * La API real no entrega filas/columnas de la sala, solo su capacidad.
- * Si la sala trae dimensiones (datos simulados) se usan; si no, se derivan
- * de la capacidad: 72 → 6×12, 80 → 8×10.
+ * Respuesta de GET /funciones/{id}/asientos → lista plana de asientos.
+ * @param {Object} datos
+ * @returns {Object[]}
  */
-export const dimensionesDeSala = (funcion) => {
-  const sala = funcion?.sala
-  if (sala?.filas && sala?.columnas) return { filas: sala.filas, columnas: sala.columnas }
-  const capacidad = Number(sala?.capacidad ?? funcion?.capacidad)
-  if (!Number.isInteger(capacidad) || capacidad <= 0) return { filas: 6, columnas: 12 }
-  const columnas = capacidad % 12 === 0 ? 12 : capacidad % 10 === 0 ? 10 : Math.min(12, capacidad)
-  return { filas: Math.ceil(capacidad / columnas), columnas }
-}
-
-/** Genera asientos vacíos para una función si aún no existen en el estado. */
-const inicializarSiNecesario = async (funcionId) => {
-  if (estadoAsientos[funcionId]) return
-
-  // Buscar la sala de la función para obtener dimensiones correctas
-  let filas = 6
-  let columnas = 12
-  try {
-    const funcion = await obtenerFuncion(funcionId)
-    ;({ filas, columnas } = dimensionesDeSala(funcion))
-  } catch {
-    // Fallback silencioso si la función no existe
-  }
-  estadoAsientos[funcionId] = generarAsientos(funcionId, filas, columnas)
-  persistir()
-}
-
-/** Libera reservas cuyo TTL ya venció y devuelve los asientos a "disponible". */
-const limpiarReservasVencidas = () => {
-  const ahora = Date.now()
-  for (const [asientoId, reserva] of Object.entries(reservasActivas)) {
-    if (ahora > reserva.expira.getTime()) {
-      delete reservasActivas[asientoId]
-      const [funcionId] = asientoId.split("-")
-      const asiento = estadoAsientos[funcionId]?.find((a) => a.id === asientoId)
-      if (asiento?.estado === "reservado") {
-        asiento.estado = "disponible"
-        asiento.reservadoHasta = null
-        persistir()
-      }
+export function asientosDesdeApi(datos) {
+  const lista = []
+  for (const { fila, asientos } of datos.filas ?? []) {
+    for (const a of asientos) {
+      lista.push({
+        id: a.id,
+        funcionId: datos.funcion_id,
+        codigo: `${fila}${a.numero}`,
+        fila,
+        columna: a.numero,
+        estado: a.estado,
+        mio: a.mio === true,
+        venceEn: a.vence_en ?? null,
+      })
     }
   }
+  return lista
 }
 
-// ── API pública ───────────────────────────────────────────────────────────────
-
 /**
- * Devuelve todos los asientos de una función con su estado actual.
- * @param {string} funcionId
+ * Mapa de asientos de una función.
+ * @param {number|string} funcionId
+ * @param {Object} [opciones]
+ * @param {AbortSignal} [opciones.signal]
  * @returns {Promise<Object[]>}
  */
-export async function obtenerAsientos(funcionId) {
-  await simularLatencia(300)
-  limpiarReservasVencidas()
-  await inicializarSiNecesario(funcionId)
-  return estadoAsientos[funcionId].map((a) => ({ ...a }))
+export async function obtenerAsientos(funcionId, { signal } = {}) {
+  if (!usaApi("asientos")) return mock.obtenerAsientos(funcionId)
+  const datos = await api.get(`/funciones/${encodeURIComponent(funcionId)}/asientos`, { signal })
+  return asientosDesdeApi(datos)
 }
 
 /**
- * Reserva temporalmente una lista de asientos.
- * Verifica que todos estén disponibles ANTES de mutar (operación atómica mock).
+ * Reserva asientos (todo o nada). El tiempo restante lo manda el servidor.
  *
- * @param {string}   funcionId
- * @param {string[]} asientoIds  — IDs completos, e.g. ["f01-A1","f01-A2"]
- * @param {string}   usuarioId
- * @returns {Promise<{ asientos: Object[], expira: Date }>}
- * @throws {Error} Si algún asiento ya no está disponible
+ * @param {number|string} funcionId
+ * @param {Array<number|string>} asientoIds
+ * @param {string|number} [usuarioId] — solo lo usa la versión simulada
+ * @returns {Promise<{ segundosRestantes: number, venceEn: string|null }>}
+ * @throws {ApiError} 409 ASIENTO_NO_DISPONIBLE, FUNCION_NO_DISPONIBLE, LIMITE_RESERVAS;
+ *                    422 DEMASIADOS_ASIENTOS, etc.
  */
 export async function reservarAsientos(funcionId, asientoIds, usuarioId) {
-  await simularLatencia(400)
-  limpiarReservasVencidas()
-  await inicializarSiNecesario(funcionId)
-
-  const lista = estadoAsientos[funcionId]
-
-  // Verificación atómica: todos deben estar disponibles
-  for (const id of asientoIds) {
-    const a = lista.find((x) => x.id === id)
-    if (!a) throw new Error(`Asiento ${id} no existe en esta función.`)
-    if (a.estado !== "disponible") {
-      throw new Error(`El asiento ${a.codigo} ya no está disponible.`)
+  if (!usaApi("asientos")) {
+    const r = await mock.reservarAsientos(funcionId, asientoIds, usuarioId)
+    return {
+      segundosRestantes: Math.max(0, Math.round((r.expira.getTime() - Date.now()) / 1000)),
+      venceEn: r.expira.toISOString(),
     }
   }
-
-  const expira = new Date(Date.now() + TTL_RESERVA_MS)
-
-  for (const id of asientoIds) {
-    const a = lista.find((x) => x.id === id)
-    a.estado = "reservado"
-    a.reservadoHasta = expira.toISOString()
-    reservasActivas[id] = { expira, usuarioId }
-  }
-  persistir()
-
-  return { asientos: asientoIds.map((id) => lista.find((a) => a.id === id)), expira }
+  const r = await api.post("/reservas", { funcion_id: Number(funcionId), asientos: asientoIds.map(Number) })
+  return { segundosRestantes: r.segundos_restantes, venceEn: r.vence_en ?? null }
 }
 
 /**
- * Confirma la venta: reservado/disponible → vendido.
- * @param {string}   funcionId
- * @param {string[]} asientoIds
+ * Mis reservas vigentes en una función.
+ * @returns {Promise<{ asientoIds: number[], segundosRestantes: number }>}
+ *   segundosRestantes = el menor de todas (0 si no hay reservas)
+ */
+export async function misReservas(funcionId, { signal } = {}) {
+  if (!usaApi("asientos")) return { asientoIds: [], segundosRestantes: 0 }
+  const { reservas } = await api.get("/reservas/mias", { params: { funcion_id: funcionId }, signal })
+  return {
+    asientoIds: reservas.map((r) => r.asiento_id),
+    segundosRestantes: reservas.length ? Math.min(...reservas.map((r) => r.segundos_restantes)) : 0,
+  }
+}
+
+/**
+ * Cancela TODAS mis reservas activas de la función.
+ * @param {number|string} funcionId
+ * @param {Array<number|string>} [asientoIds] — solo lo usa la versión simulada
  * @returns {Promise<void>}
+ */
+export async function cancelarReservas(funcionId, asientoIds = []) {
+  if (!usaApi("asientos")) return mock.liberarAsientos(funcionId, asientoIds)
+  await api.post("/reservas/cancelar", { funcion_id: Number(funcionId) })
+}
+
+/**
+ * Solo versión simulada: marca asientos como vendidos (la compra real llega en la Fase I4).
+ * Con la API no hace nada: el servidor es quien vende.
  */
 export async function confirmarVenta(funcionId, asientoIds) {
-  await simularLatencia(200)
-  const lista = estadoAsientos[funcionId]
-  if (!lista) throw new Error("Función no encontrada en el mapa de asientos.")
-  for (const id of asientoIds) {
-    const a = lista.find((x) => x.id === id)
-    if (a) {
-      a.estado = "vendido"
-      a.reservadoHasta = null
-      delete reservasActivas[id]
-    }
-  }
-  persistir()
-}
-
-/**
- * Libera asientos reservados (cancelación o expiración manual).
- * @param {string}   funcionId
- * @param {string[]} asientoIds
- * @returns {Promise<void>}
- */
-export async function liberarAsientos(funcionId, asientoIds) {
-  await simularLatencia(150)
-  const lista = estadoAsientos[funcionId]
-  if (!lista) return
-  for (const id of asientoIds) {
-    const a = lista.find((x) => x.id === id)
-    if (a?.estado === "reservado") {
-      a.estado = "disponible"
-      a.reservadoHasta = null
-      delete reservasActivas[id]
-    }
-  }
-  persistir()
+  if (usaApi("asientos")) return
+  return mock.confirmarVenta(funcionId, asientoIds)
 }

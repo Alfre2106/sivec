@@ -1,14 +1,20 @@
 /**
  * SeleccionAsientos.jsx — Mapa de asientos interactivo.
- * El usuario selecciona sus asientos y luego reserva para pasar al resumen.
+ *
+ * El mapa viene de la API y se refresca solo cada 5 s (ver useFuncion). El usuario
+ * elige asientos y al pulsar "Continuar" se reservan (5 min) y pasa al resumen.
+ *
+ * Sin sesión: "Continuar" recuerda la función y los asientos elegidos, manda al login
+ * y, al volver, restaura esa misma selección para reservar.
  */
 
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { Trash2, Calendar, Clock, MapPin } from "lucide-react"
+import { Trash2, Calendar, Clock, MapPin, WifiOff } from "lucide-react"
 import { useCart } from "@/context/CartContext"
 import { useToast } from "@/components/ui/Toast"
 import { reservarAsientos } from "@/services/asientosService"
+import { ApiError } from "@/services/apiClient"
 import { useFuncion } from "@/hooks/useFuncion"
 import { useAuth } from "@/context/AuthContext"
 import SeatMap from "@/components/SeatMap"
@@ -19,7 +25,7 @@ import Poster from "@/components/Poster"
 import AvisoDisponibilidad from "@/components/AvisoDisponibilidad"
 import { formatearFechaLarga, formatearHora } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
-import { mismoId } from "@/utils/ids"
+import { guardarSeleccionPendiente, tomarSeleccionPendiente } from "@/utils/seleccionPendiente"
 
 export default function SeleccionAsientos() {
   const { id: idUrl } = useParams()
@@ -27,42 +33,107 @@ export default function SeleccionAsientos() {
   const id = Number(idUrl)
   const idValido = Number.isInteger(id) && id > 0
   const navigate = useNavigate()
-  const { usuario } = useAuth()
+  const { usuario, autenticado } = useAuth()
   const { toast } = useToast()
-  const { funcionActual, asientosSeleccionados, toggleAsiento, seleccionarFuncion, activarReserva, totalSeleccionado } = useCart()
-  const { funcion, asientos, cargando, error, refrescar } = useFuncion(idValido ? id : undefined)
+  const {
+    funcionActual, asientosSeleccionados, toggleAsiento, fijarSeleccion, quitarAsientos,
+    seleccionarFuncion, activarReserva, totalSeleccionado,
+  } = useCart()
+  const { funcion, asientos, cargando, error, sinConexion, refrescar, refrescarAsientos } =
+    useFuncion(idValido ? id : undefined)
   const [reservando, setReservando] = useState(false)
 
-  // Si llega directo por URL sin pasar por la cartelera, cargamos la función
+  // Si llega directo por URL sin pasar por la cartelera, fija la función en el carrito
   useEffect(() => {
-    if (funcion && (!funcionActual || !mismoId(funcionActual.id, id))) {
+    if (funcion && funcionActual?.id !== funcion.id) {
       seleccionarFuncion(funcion)
     }
-  }, [funcion, funcionActual, id, seleccionarFuncion])
+  }, [funcion, funcionActual, seleccionarFuncion])
+
+  // Al volver del login, restaurar los asientos que el usuario había elegido
+  useEffect(() => {
+    if (!funcion || asientos.length === 0) return
+    const pendientes = tomarSeleccionPendiente(id)
+    if (!pendientes?.length) return
+    const disponibles = asientos.filter((a) => pendientes.includes(a.id) && a.estado === "disponible")
+    if (disponibles.length) {
+      fijarSeleccion(disponibles)
+      if (disponibles.length < pendientes.length) {
+        toast({ tipo: "advertencia", titulo: "Algunos asientos ya no estaban libres", mensaje: "Revisamos tu selección." })
+      }
+    } else {
+      toast({ tipo: "advertencia", titulo: "Tus asientos ya no estaban disponibles", mensaje: "Elígelos de nuevo." })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [funcion, asientos, id])
 
   // Verificar si la función ya inició
   const yaInicio = !!funcion && (new Date(funcion.fechaHora) <= new Date() || funcion.estado === "finalizada")
   const cancelada = funcion?.estado === "cancelada"
+
+  /** Quita de la selección los asientos que el mapa ya no muestra como disponibles. */
+  const sincronizarSeleccionConMapa = (mapa) => {
+    const ocupados = asientosSeleccionados
+      .filter((sel) => {
+        const a = mapa.find((x) => x.id === sel.id)
+        return !a || a.estado !== "disponible"
+      })
+      .map((a) => a.id)
+    if (ocupados.length) quitarAsientos(ocupados)
+  }
 
   const manejarReservar = async () => {
     if (asientosSeleccionados.length === 0) {
       toast({ tipo: "advertencia", titulo: "Selecciona al menos un asiento" })
       return
     }
+    // Sin sesión: recordar la selección y mandar al login (vuelve a esta misma pantalla)
+    if (!autenticado) {
+      guardarSeleccionPendiente(id, asientosSeleccionados.map((a) => a.id))
+      toast({ tipo: "info", titulo: "Inicia sesión para continuar", mensaje: "Guardamos tu selección." })
+      navigate("/login", { state: { desde: { pathname: `/funcion/${id}/asientos` } } })
+      return
+    }
+
     setReservando(true)
     try {
-      const resultado = await reservarAsientos(
+      const { segundosRestantes, venceEn } = await reservarAsientos(
         id,
         asientosSeleccionados.map((a) => a.id),
-        usuario?.id ?? "anonimo"
+        usuario?.id
       )
-      activarReserva({ asientoIds: asientosSeleccionados.map((a) => a.id), expira: resultado.expira })
+      activarReserva({
+        asientoIds: asientosSeleccionados.map((a) => a.id),
+        segundosRestantes,
+        venceEn,
+      })
       navigate("/resumen")
     } catch (err) {
-      toast({ tipo: "error", titulo: "Asiento no disponible", mensaje: err.message })
+      await manejarErrorReserva(err)
     } finally {
       setReservando(false)
     }
+  }
+
+  /** Traduce los errores de la reserva a avisos y refresca el mapa cuando hace falta. */
+  const manejarErrorReserva = async (err) => {
+    const codigo = err instanceof ApiError ? err.codigo : null
+    if (codigo === "ASIENTO_NO_DISPONIBLE") {
+      toast({ tipo: "error", titulo: "Alguien tomó ese asiento", mensaje: "Actualizamos el mapa; elige otros." })
+      const mapa = await refrescarAsientos()
+      if (mapa) sincronizarSeleccionConMapa(mapa)
+      return
+    }
+    if (codigo === "FUNCION_NO_DISPONIBLE") {
+      toast({ tipo: "error", titulo: "Función no disponible", mensaje: err.mensaje })
+      refrescar()
+      return
+    }
+    if (codigo === "LIMITE_RESERVAS") {
+      toast({ tipo: "advertencia", titulo: "Demasiadas reservas", mensaje: err.mensaje })
+      return
+    }
+    toast({ tipo: "error", titulo: "No se pudo reservar", mensaje: err.mensaje ?? err.message })
   }
 
   if (!idValido) return <MensajeError mensaje="La función que buscas no existe." onReintentar={() => navigate("/cartelera")} />
@@ -79,6 +150,14 @@ export default function SeleccionAsientos() {
       {(yaInicio || cancelada) && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded-sivec px-5 py-4 text-red-700 font-cuerpo text-sm">
           {cancelada ? "⚠️ Esta función fue cancelada. No se pueden vender entradas." : "⚠️ Esta función ya inició o finalizó. No se pueden vender entradas."}
+        </div>
+      )}
+
+      {/* Aviso de que el mapa dejó de actualizarse (fallo de conexión en el refresco) */}
+      {sinConexion && !yaInicio && !cancelada && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-sivec px-5 py-3 text-amber-800 font-cuerpo text-sm flex items-center gap-2">
+          <WifiOff className="w-4 h-4 shrink-0" aria-hidden="true" />
+          No pudimos actualizar el mapa. Puede estar desactualizado; reintentando…
         </div>
       )}
 

@@ -74,6 +74,17 @@ export function CartProvider({ children }) {
     })
   }, [])
 
+  /** Reemplaza la selección completa (ej: al restaurarla tras iniciar sesión). */
+  const fijarSeleccion = useCallback((asientos) => {
+    setAsientosSeleccionados(asientos)
+  }, [])
+
+  /** Quita de la selección los asientos con esos ids (ej: otro cliente los tomó). */
+  const quitarAsientos = useCallback((ids) => {
+    const set = new Set(ids)
+    setAsientosSeleccionados((prev) => prev.filter((a) => !set.has(a.id)))
+  }, [])
+
   /**
    * Establece la función actualmente en proceso de compra.
    * @param {Object} funcion
@@ -86,13 +97,19 @@ export function CartProvider({ children }) {
   }, [])
 
   /**
-   * Activa la reserva con su tiempo de expiración.
-   * @param {{ asientoIds: string[], expira: Date }} datosReserva
+   * Activa la reserva. El tiempo lo manda el servidor: `segundosRestantes`
+   * (preferido) y/o `venceEn`. La expiración se calcula desde `segundosRestantes`
+   * para no depender del reloj del navegador.
+   * @param {{ asientoIds: Array<number|string>, segundosRestantes?: number, venceEn?: string|null, expira?: Date }} datosReserva
    */
   const activarReserva = useCallback(
     (datosReserva) => {
-      setReserva(datosReserva)
-      iniciarCountdown(datosReserva.expira)
+      const expira = datosReserva.expira
+        ?? (typeof datosReserva.segundosRestantes === "number"
+          ? new Date(Date.now() + datosReserva.segundosRestantes * 1000)
+          : datosReserva.venceEn ? new Date(datosReserva.venceEn) : new Date())
+      setReserva({ asientoIds: datosReserva.asientoIds, expira })
+      iniciarCountdown(expira)
     },
     [iniciarCountdown]
   )
@@ -137,6 +154,8 @@ export function CartProvider({ children }) {
     compraConfirmada,
     totalSeleccionado,
     toggleAsiento,
+    fijarSeleccion,
+    quitarAsientos,
     seleccionarFuncion,
     activarReserva,
     limpiarCarrito,
