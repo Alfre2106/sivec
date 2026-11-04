@@ -7,9 +7,10 @@
  */
 
 import { simularLatencia } from "./config"
-import { listarCompras } from "./comprasService"
+// Reportes siguen simulados hasta la Fase I6: todo sale de los mocks
+import { listarCompras } from "./mock/comprasMock"
 import { listarTodasFunciones } from "./funcionesAdminService"
-import { obtenerAsientos } from "./asientosService"
+import { obtenerAsientos } from "./mock/asientosMock"
 import { listarUsuarios } from "./usuariosService"
 import { subMonths, format } from "date-fns"
 import { es } from "date-fns/locale"

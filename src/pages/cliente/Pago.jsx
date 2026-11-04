@@ -7,9 +7,8 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { CreditCard, Lock, CheckCircle2, XCircle } from "lucide-react"
 import { useCart } from "@/context/CartContext"
-import { useAuth } from "@/context/AuthContext"
 import { useToast } from "@/components/ui/Toast"
-import { crearCompra } from "@/services/comprasService"
+import { crearCompra, ApiError } from "@/services/comprasService"
 import Button from "@/components/ui/Button"
 import Input from "@/components/ui/Input"
 import { formatearPrecio } from "@/utils/formato"
@@ -23,9 +22,8 @@ const formatExpiry = (v) => {
 
 export default function Pago() {
   const navigate = useNavigate()
-  const { usuario } = useAuth()
   const { toast } = useToast()
-  const { funcionActual, asientosSeleccionados, totalSeleccionado, confirmarCompra, reserva } = useCart()
+  const { funcionActual, asientosSeleccionados, totalSeleccionado, confirmarCompra, reserva, limpiarCarrito } = useCart()
 
   const [form, setForm]       = useState({ numero: "", nombre: "", expiry: "", cvv: "" })
   const [errores, setErrores] = useState({})
@@ -98,25 +96,48 @@ export default function Pago() {
     if (!validar()) return
     setProcesando(true)
     try {
-      const compra = await crearCompra({
-        usuarioId:       usuario?.id ?? "anonimo",
-        funcionId:       funcionActual.id,
-        asientoIds:      asientosSeleccionados.map((a) => a.id),
-        codigosAsiento:  asientosSeleccionados.map((a) => a.codigo),
-        total:           totalSeleccionado,
+      const { compra, entradas } = await crearCompra({
+        funcionId:      funcionActual.id,
+        // Sin asientos: el backend usa mis reservas activas de la Fase I3
+        total:          totalSeleccionado,
+        metodoPago:     "tarjeta",
         simularRechazo,
       })
       // Marcar éxito ANTES de limpiar el carrito para que la guarda de
       // redirección no se dispare al vaciarse funcionActual/reserva.
       setResultado("exito")
       confirmarCompra(compra)
-      setTimeout(() => navigate(`/entrada/${compra.entradas[0].id}`, { state: { compra } }), 1500)
+      setTimeout(() => navigate(`/entrada/${entradas[0].id}`, { state: { compra } }), 1500)
     } catch (err) {
-      setResultado("rechazado")
-      toast({ tipo: "error", titulo: "Pago rechazado", mensaje: err.message })
+      await manejarErrorPago(err)
     } finally {
       setProcesando(false)
     }
+  }
+
+  /** Traduce los errores del pago a avisos y acciones. */
+  const manejarErrorPago = async (err) => {
+    const codigo = err instanceof ApiError ? err.codigo : null
+    if (codigo === "PAGO_RECHAZADO") {
+      // La reserva sigue viva: se puede reintentar sin volver a elegir asientos
+      setResultado("rechazado")
+      toast({ tipo: "error", titulo: "Pago rechazado", mensaje: "No se generaron entradas. Puedes intentarlo de nuevo." })
+      return
+    }
+    if (codigo === "RESERVA_VENCIDA") {
+      limpiarCarrito()
+      toast({ tipo: "advertencia", titulo: "Tu reserva venció", mensaje: "Vuelve a elegir tus asientos." })
+      navigate(`/funcion/${funcionActual.id}/asientos`, { replace: true })
+      return
+    }
+    if (codigo === "ASIENTO_NO_DISPONIBLE" || codigo === "FUNCION_NO_DISPONIBLE") {
+      limpiarCarrito()
+      toast({ tipo: "error", titulo: "Asientos no disponibles", mensaje: err.mensaje })
+      navigate(`/funcion/${funcionActual.id}/asientos`, { replace: true })
+      return
+    }
+    setResultado("rechazado")
+    toast({ tipo: "error", titulo: "No se pudo completar el pago", mensaje: err.mensaje ?? err.message })
   }
 
   // Pantalla de resultado

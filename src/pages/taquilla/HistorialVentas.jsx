@@ -5,7 +5,8 @@
 
 import { useEffect, useState } from "react"
 import { Search, Receipt, ChevronDown } from "lucide-react"
-import { listarCompras }  from "@/services/comprasService"
+// Historial de taquilla sigue simulado hasta la Fase I5
+import { listarCompras }  from "@/services/mock/comprasMock"
 import { obtenerFuncion } from "@/services/funcionesService"
 import Spinner  from "@/components/ui/Spinner"
 import Badge    from "@/components/ui/Badge"

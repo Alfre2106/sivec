@@ -1,59 +1,73 @@
 /**
- * EntradaQR.jsx — Muestra la entrada con código QR después de la compra.
- * Accesible desde /entrada/:id o desde Mis Compras.
+ * EntradaQR.jsx — Muestra la entrada con su código QR.
+ *
+ * Dos caminos:
+ *  - Justo tras el pago: la compra llega por el state de navegación (todas sus entradas).
+ *  - Por URL /entrada/:id o desde Mis compras: se pide la entrada a la API y su función.
  */
 
 import { useEffect, useState } from "react"
 import { useNavigate, useLocation, useParams, Link } from "react-router-dom"
 import { Download, ArrowLeft, ShoppingBag } from "lucide-react"
-import { listarCompras } from "@/services/comprasService"
+import { obtenerEntrada } from "@/services/entradasService"
 import { obtenerFuncion } from "@/services/funcionesService"
+import { mensajeDeError } from "@/services/apiClient"
 import QRTicket from "@/components/QRTicket"
 import Spinner from "@/components/ui/Spinner"
 import Button from "@/components/ui/Button"
-import { mismoId } from "@/utils/ids"
+import MensajeError from "@/components/ui/MensajeError"
 
 export default function EntradaQR() {
-  const { id } = useParams()
+  const { id: idUrl } = useParams()
+  const id = Number(idUrl)
   const location = useLocation()
   const navigate = useNavigate()
 
   const [entradas, setEntradas] = useState([])
   const [funcion,  setFuncion]  = useState(null)
   const [cargando, setCargando] = useState(true)
+  const [error,    setError]    = useState(null)
 
   useEffect(() => {
+    const ctrl = new AbortController()
     const cargar = async () => {
+      setCargando(true)
+      setError(null)
       try {
-        // La compra puede venir por estado de navegación (justo después del pago)
-        // o hay que buscarla por el id de entrada
-        let compra = location.state?.compra
-        if (!compra) {
-          const todas = await listarCompras()
-          compra = todas.find((c) => c.entradas?.some((e) => mismoId(e.id, id)))
+        // Camino rápido: venimos del pago con la compra completa
+        const compra = location.state?.compra
+        if (compra?.entradas?.length && compra.funcionId) {
+          const f = await obtenerFuncion(compra.funcionId, { signal: ctrl.signal })
+          setFuncion(f)
+          setEntradas(compra.entradas)
+          return
         }
-        if (!compra) throw new Error("Entrada no encontrada")
-        const f = await obtenerFuncion(compra.funcionId)
+        // Camino por URL: una entrada por su id
+        if (!Number.isInteger(id) || id <= 0) throw new Error("Entrada no encontrada.")
+        const entrada = await obtenerEntrada(id, { signal: ctrl.signal })
+        const f = await obtenerFuncion(entrada.funcionId, { signal: ctrl.signal })
         setFuncion(f)
-        setEntradas(compra.entradas ?? [])
+        setEntradas([entrada])
       } catch (err) {
-        console.error(err)
+        if (err?.name === "AbortError") return
+        setError(mensajeDeError(err, "No se encontró la entrada."))
       } finally {
-        setCargando(false)
+        if (!ctrl.signal.aborted) setCargando(false)
       }
     }
     cargar()
+    return () => ctrl.abort()
   }, [id, location.state])
 
   if (cargando) return <div className="flex justify-center py-20"><Spinner tamaño="lg" texto="Cargando entrada..." /></div>
 
-  if (!funcion || entradas.length === 0) {
+  if (error || !funcion || entradas.length === 0) {
     return (
-      <div className="text-center py-20">
-        <p className="text-gray-500 font-cuerpo mb-4">No se encontró la entrada.</p>
-        <Link to="/mis-compras" className="text-primario font-semibold hover:underline">
-          Ver Mis Compras
-        </Link>
+      <div className="max-w-lg mx-auto px-4 py-16">
+        <MensajeError
+          mensaje={error ?? "No se encontró la entrada."}
+          onReintentar={() => navigate("/mis-compras")}
+        />
       </div>
     )
   }

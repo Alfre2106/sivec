@@ -14,8 +14,9 @@ import { CheckCircle2, Ticket, RotateCcw, Printer } from "lucide-react"
 import { listarFunciones }  from "@/services/funcionesService"
 import { fueCancelada, mensajeDeError } from "@/services/apiClient"
 import { formatearDiaHora, formatearFechaCortaHora, formatearFecha, formatearHora } from "@/utils/fechas"
-import { obtenerAsientos }  from "@/services/asientosService"
-import { crearCompra }      from "@/services/comprasService"
+// Taquilla sigue simulada hasta la Fase I5: usa los mocks directamente
+import { obtenerAsientos }  from "@/services/mock/asientosMock"
+import { crearCompra }      from "@/services/mock/comprasMock"
 import { useAuth }          from "@/context/AuthContext"
 import { useToast }         from "@/components/ui/Toast"
 

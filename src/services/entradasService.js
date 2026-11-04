@@ -1,118 +1,48 @@
 /**
- * entradasService.js — Servicio de validación de entradas.
+ * entradasService.js — Entradas (lectura) y validación.
  *
- * Reglas de negocio:
- *  - Una entrada solo puede usarse una vez (estado: "activa" → "usada")
- *  - Si la función fue cancelada, la entrada está "anulada"
- *  - El código QR contiene el código único de la entrada
- *
- * HOY: Opera en la misma referencia de compras (mismo módulo en memoria).
- * DESPUÉS: Endpoint POST /entradas/validar en Flask.
+ * Con usaApi("entradas") usa la API real:
+ *   GET /entradas/{id}       → datos de una entrada
+ *   GET /entradas/{id}/qr    → imagen PNG del QR (requiere token; se pide por fetch)
+ * La VALIDACIÓN en puerta (POST /validaciones) se migra en la Fase I5; por ahora
+ * validarEntrada sigue usando la lógica simulada.
  */
 
-import { simularLatencia } from "./config"
-import { listarCompras, persistirCambios } from "./comprasService"
-import { obtenerFuncion } from "./funcionesService"
+import { usaApi } from "./config"
+import { api } from "./apiClient"
+import { entradaDesdeApi } from "./comprasService"
+import * as mock from "./mock/entradasMock"
 
 /**
- * Resultado de validación de entrada.
- * @typedef {Object} ResultadoValidacion
- * @property {"valida"|"ya_usada"|"invalida"|"anulada"} estado
- * @property {string} mensaje
- * @property {Object|null} entrada — datos de la entrada si se encontró
- * @property {Object|null} funcion — datos de la función
- * @property {Object|null} compra  — datos de la compra
+ * Datos de una entrada por su id.
+ * @param {number|string} id
+ * @param {Object} [opciones] @param {AbortSignal} [opciones.signal]
+ * @returns {Promise<Object>} entrada en forma de interfaz (+ funcionId, compraId)
+ * @throws {ApiError} 403 ENTRADA_AJENA, 404 ENTRADA_NO_ENCONTRADA
  */
+export async function obtenerEntrada(id, { signal } = {}) {
+  if (!usaApi("entradas")) throw new Error("obtenerEntrada no está disponible en modo simulado")
+  const { entrada } = await api.get(`/entradas/${encodeURIComponent(id)}`, { signal })
+  return { ...entradaDesdeApi(entrada), funcionId: entrada.funcion_id, compraId: entrada.compra_id }
+}
 
 /**
- * Valida una entrada por su código (escaneado en QR o ingresado manual).
- * Actualiza el estado a "usada" si es válida.
- *
- * @param {string} codigo — Código único de la entrada (ej: "SVC-2024-000001")
- * @param {string} [funcionIdActual] — Si se pasa, verifica que pertenezca a esta función
- * @returns {Promise<ResultadoValidacion>}
+ * Descarga el PNG del QR de una entrada (con token) y devuelve un object URL.
+ * El llamador debe revocarlo con URL.revokeObjectURL cuando ya no lo use.
+ * @param {number|string} id
+ * @param {Object} [opciones] @param {AbortSignal} [opciones.signal]
+ * @returns {Promise<string>} object URL de la imagen
+ */
+export async function urlQrEntrada(id, { signal } = {}) {
+  const { blob } = await api.descargar(`/entradas/${encodeURIComponent(id)}/qr`, { signal })
+  return URL.createObjectURL(blob)
+}
+
+/**
+ * Valida una entrada en puerta. AÚN SIMULADO (se migra a POST /validaciones en la Fase I5).
+ * @param {string} codigo
+ * @param {string|number|null} [funcionIdActual]
  */
 export async function validarEntrada(codigo, funcionIdActual = null) {
-  await simularLatencia(400)
-
-  const compras = await listarCompras()
-
-  // Buscar la entrada en todas las compras
-  let entradaEncontrada = null
-  let compraEncontrada = null
-
-  for (const compra of compras) {
-    const entrada = compra.entradas?.find((e) => e.codigo === codigo)
-    if (entrada) {
-      entradaEncontrada = entrada
-      compraEncontrada = compra
-      break
-    }
-  }
-
-  // Código inexistente
-  if (!entradaEncontrada) {
-    return {
-      estado: "invalida",
-      mensaje: "Código de entrada no encontrado en el sistema.",
-      entrada: null,
-      funcion: null,
-      compra: null,
-    }
-  }
-
-  // Obtener datos de la función
-  let funcion = null
-  try {
-    funcion = await obtenerFuncion(compraEncontrada.funcionId)
-  } catch {
-    // La función puede haberse eliminado del mock
-  }
-
-  // Entrada anulada (función cancelada)
-  if (entradaEncontrada.estado === "anulada") {
-    return {
-      estado: "anulada",
-      mensaje: "Esta entrada fue anulada porque la función fue cancelada.",
-      entrada: entradaEncontrada,
-      funcion,
-      compra: compraEncontrada,
-    }
-  }
-
-  // Entrada ya usada
-  if (entradaEncontrada.estado === "usada") {
-    return {
-      estado: "ya_usada",
-      mensaje: `Esta entrada ya fue usada el ${new Date(entradaEncontrada.fechaUso).toLocaleString("es-CO")}.`,
-      entrada: entradaEncontrada,
-      funcion,
-      compra: compraEncontrada,
-    }
-  }
-
-  // Verificar que pertenece a la función correcta (si se indicó)
-  if (funcionIdActual && compraEncontrada.funcionId !== funcionIdActual) {
-    const funcionCorrecta = funcion
-    return {
-      estado: "invalida",
-      mensaje: `Esta entrada pertenece a otra función: "${funcionCorrecta?.pelicula?.titulo ?? compraEncontrada.funcionId}".`,
-      entrada: entradaEncontrada,
-      funcion,
-      compra: compraEncontrada,
-    }
-  }
-
-  // ✅ Entrada válida — marcarla como usada y persistir
-  entradaEncontrada.estado = "usada"
-  entradaEncontrada.fechaUso = new Date().toISOString()
-  persistirCambios()
-
-  return {
-    estado: "valida",
-    mensaje: "¡Entrada válida! Acceso permitido.",
-    entrada: entradaEncontrada,
-    funcion,
-    compra: compraEncontrada,
-  }
+  return mock.validarEntrada(codigo, funcionIdActual)
 }
