@@ -24,7 +24,10 @@ export const USE_MOCK = String(import.meta.env.VITE_USE_MOCK ?? "true").trim().t
  *   I1 auth · I2 peliculas y funciones · I3 asientos y reservas · I4 compras y entradas
  *   I5 validaciones · I6 salas, usuarios y reportes
  */
-const SERVICIOS_MIGRADOS = new Set(["auth", "peliculas", "funciones", "asientos", "compras", "entradas", "validaciones"])
+const SERVICIOS_MIGRADOS = new Set([
+  "auth", "peliculas", "funciones", "asientos", "compras", "entradas", "validaciones",
+  "salas", "usuarios", "funcionesAdmin", "peliculasAdmin", "reportes",
+])
 
 /**
  * ¿Este servicio usa la API real?

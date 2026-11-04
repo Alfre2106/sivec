@@ -1,64 +1,84 @@
 /**
- * salasService.js — Servicio CRUD de salas.
+ * salasService.js — CRUD de salas (administrador / taquillero).
  *
- * HOY: Opera en memoria sobre SALAS_MOCK.
- * DESPUÉS: GET/POST/PUT/DELETE /api/salas
+ * Con usaApi("salas") usa la API real (GET/POST/PUT/DELETE /salas); si no, la lógica
+ * simulada de mock/salasMock.js.
+ *
+ * La API maneja `asientos_por_fila` y calcula `capacidad = filas × asientos_por_fila`.
+ * La interfaz histórica usa `columnas`; aquí se traduce en ambos sentidos para no
+ * tocar las pantallas. La API no tiene `tipo` de sala (se eliminó del panel en la Fase I6).
+ *
+ * Forma de sala para la interfaz: { id, nombre, filas, columnas, capacidad }
  */
 
-import { simularLatencia } from "./config"
-import { SALAS_MOCK } from "@/data/salas"
-import { cargar, guardar } from "./almacenamiento"
+import { usaApi } from "./config"
+import { api } from "./apiClient"
+import * as mock from "./mock/salasMock"
 
-let salas = cargar("salas", () => SALAS_MOCK.map((s) => ({ ...s })))
-
-const persistir = () => guardar("salas", salas)
-
-/** Lista todas las salas. */
-export async function listarSalas() {
-  await simularLatencia(300)
-  return salas.map((s) => ({ ...s }))
+/** Sala de la API → sala de la interfaz (asientos_por_fila → columnas). */
+export function salaDesdeApi(s) {
+  return {
+    id: s.id,
+    nombre: s.nombre,
+    filas: s.filas,
+    columnas: s.asientos_por_fila,
+    capacidad: s.capacidad,
+  }
 }
 
-/** Obtiene una sala por ID. */
-export async function obtenerSala(id) {
-  await simularLatencia(200)
-  const sala = salas.find((s) => s.id === id)
-  if (!sala) throw new Error("Sala no encontrada.")
-  return { ...sala }
+/** Datos del formulario → cuerpo de la API (columnas → asientos_por_fila). */
+function salaHaciaApi(datos) {
+  const cuerpo = {}
+  if (datos.nombre !== undefined) cuerpo.nombre = datos.nombre
+  if (datos.filas !== undefined) cuerpo.filas = Number(datos.filas)
+  if (datos.columnas !== undefined) cuerpo.asientos_por_fila = Number(datos.columnas)
+  return cuerpo
 }
 
 /**
- * Crea una nueva sala. La capacidad se calcula como filas × columnas.
- * @param {Object} datos — { nombre, filas, columnas, tipo }
+ * Lista todas las salas.
+ * @param {Object} [opciones] @param {AbortSignal} [opciones.signal]
+ * @returns {Promise<Object[]>}
+ */
+export async function listarSalas({ signal } = {}) {
+  if (!usaApi("salas")) return mock.listarSalas()
+  const { salas } = await api.get("/salas", { signal })
+  return salas.map(salaDesdeApi)
+}
+
+/** Obtiene una sala por id. */
+export async function obtenerSala(id, { signal } = {}) {
+  if (!usaApi("salas")) return mock.obtenerSala(id)
+  const { sala } = await api.get(`/salas/${encodeURIComponent(id)}`, { signal })
+  return salaDesdeApi(sala)
+}
+
+/**
+ * Crea una sala.
+ * @param {{nombre:string, filas:number, columnas:number}} datos
+ * @throws {ApiError} 422 CAMPOS_REQUERIDOS, FILAS_INVALIDAS, ASIENTOS_INVALIDOS
  */
 export async function crearSala(datos) {
-  await simularLatencia(400)
-  const nueva = {
-    id: `s${Date.now()}`,
-    activa: true,
-    ...datos,
-    capacidad: (datos.filas ?? 0) * (datos.columnas ?? 0),
-  }
-  salas.push(nueva)
-  persistir()
-  return { ...nueva }
+  if (!usaApi("salas")) return mock.crearSala(datos)
+  const { sala } = await api.post("/salas", salaHaciaApi(datos))
+  return salaDesdeApi(sala)
 }
 
-/** Actualiza una sala (recalcula capacidad). */
+/**
+ * Actualiza una sala. Cambiar filas/columnas con funciones activas da 409 SALA_CON_FUNCIONES.
+ * @throws {ApiError} 404 SALA_NO_ENCONTRADA, 409 SALA_CON_FUNCIONES, 422 (validaciones)
+ */
 export async function actualizarSala(id, datos) {
-  await simularLatencia(350)
-  const idx = salas.findIndex((s) => s.id === id)
-  if (idx === -1) throw new Error("Sala no encontrada.")
-  const actualizada = { ...salas[idx], ...datos }
-  actualizada.capacidad = (actualizada.filas ?? 0) * (actualizada.columnas ?? 0)
-  salas[idx] = actualizada
-  persistir()
-  return { ...actualizada }
+  if (!usaApi("salas")) return mock.actualizarSala(id, datos)
+  const { sala } = await api.put(`/salas/${encodeURIComponent(id)}`, salaHaciaApi(datos))
+  return salaDesdeApi(sala)
 }
 
-/** Elimina una sala. */
+/**
+ * Elimina una sala. Solo si no tiene ninguna función.
+ * @throws {ApiError} 404 SALA_NO_ENCONTRADA, 409 SALA_CON_FUNCIONES
+ */
 export async function eliminarSala(id) {
-  await simularLatencia(300)
-  salas = salas.filter((s) => s.id !== id)
-  persistir()
+  if (!usaApi("salas")) return mock.eliminarSala(id)
+  await api.del(`/salas/${encodeURIComponent(id)}`)
 }

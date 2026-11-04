@@ -1,172 +1,237 @@
 /**
- * reportesService.js — Servicio de reportes y métricas agregadas.
+ * reportesService.js — Reportes y métricas (solo administrador).
  *
- * Calcula estadísticas a partir de compras, funciones, asientos y entradas.
- * HOY: agrega datos mock en memoria.
- * DESPUÉS: GET /api/reportes/* (el backend hará los agregados en SQL).
+ * Con usaApi("reportes") usa la API real (GET /reportes/*); si no, agrega datos simulados.
+ * Mantiene las firmas que ya usaban Dashboard y Reportes, y añade las nuevas de la Fase I6
+ * (reservas vencidas, intentos rechazados y exportación CSV autenticada).
+ *
+ * Todos los filtros de fecha son { desde, hasta } en formato "YYYY-MM-DD" (hora de Bogotá).
  */
 
+import { usaApi } from "./config"
+import { api } from "./apiClient"
 import { simularLatencia } from "./config"
-// Reportes siguen simulados hasta la Fase I6: todo sale de los mocks
 import { listarCompras } from "./mock/comprasMock"
-import { listarTodasFunciones } from "./funcionesAdminService"
-import { obtenerAsientos } from "./mock/asientosMock"
-import { listarUsuarios } from "./usuariosService"
+import { listarTodasFunciones as mockFunciones } from "./mock/funcionesMock"
+import { obtenerAsientos as mockAsientos } from "./mock/asientosMock"
+import { listarUsuarios as mockUsuarios } from "./mock/usuariosMock"
 import { subMonths, format } from "date-fns"
 import { es } from "date-fns/locale"
 
+const paramsFecha = ({ desde, hasta } = {}) => {
+  const p = {}
+  if (desde) p.desde = desde
+  if (hasta) p.hasta = hasta
+  return p
+}
+
+// ── Dashboard: métricas principales ───────────────────────────────────────────
+
 /**
- * Métricas principales del dashboard.
- * @returns {Promise<Object>}
+ * Métricas del dashboard. Mantiene el shape que leen las StatCards:
+ *   { ventasTotales, entradasVendidas, funcionesActivas, usuariosRegistrados, totalTransacciones }
  */
-export async function obtenerMetricasDashboard() {
-  await simularLatencia(500)
-
-  const [compras, funciones, usuarios] = await Promise.all([
-    listarCompras(),
-    listarTodasFunciones(),
-    listarUsuarios(),
-  ])
-
-  const ventasTotales   = compras.reduce((s, c) => s + (c.total ?? 0), 0)
-  const entradasVendidas = compras.reduce((s, c) => s + (c.entradas?.length ?? 0), 0)
-  const funcionesActivas = funciones.filter((f) => f.estado === "activa").length
-
+export async function obtenerMetricasDashboard({ signal } = {}) {
+  if (!usaApi("reportes")) return metricasMock()
+  const r = await api.get("/reportes/resumen", { params: { dias: 30 }, signal })
   return {
-    ventasTotales,
-    entradasVendidas,
-    funcionesActivas,
+    ventasTotales: r.ventas_totales ?? 0,
+    entradasVendidas: r.entradas_vendidas ?? 0,
+    funcionesActivas: r.funciones_activas ?? 0,
+    usuariosRegistrados: r.usuarios_total ?? 0,
+    ingresosAnulados: r.ingresos_anulados ?? 0,
+    entradasAnuladas: r.entradas_anuladas ?? 0,
+    ocupacionPromedio: r.ocupacion_promedio ?? 0,
+  }
+}
+
+/**
+ * Serie de ventas por mes para la gráfica. Shape: [{ mes, ventas }].
+ */
+export async function ventasPorMes({ signal } = {}) {
+  if (!usaApi("reportes")) return ventasPorMesMock()
+  const { serie } = await api.get("/reportes/ventas-por-mes", { params: { meses: 12 }, signal })
+  // "2026-11" → "nov" para el eje X
+  return (serie ?? []).map((s) => ({ mes: etiquetaMes(s.mes), ventas: s.ventas ?? 0, entradas: s.entradas ?? 0 }))
+}
+
+function etiquetaMes(clave) {
+  // clave "AAAA-MM"; construimos una fecha local al día 1 para el nombre corto
+  const [a, m] = String(clave).split("-").map(Number)
+  if (!a || !m) return clave
+  return format(new Date(a, m - 1, 1), "MMM", { locale: es })
+}
+
+/**
+ * Ranking de películas más vendidas. Shape que usan Dashboard y Reportes:
+ *   [{ titulo, entradas, porcentaje }]
+ */
+export async function funcionesMasVendidas({ signal, desde, hasta } = {}) {
+  if (!usaApi("reportes")) return rankingMock()
+  const r = await api.get("/reportes/peliculas-ranking", { params: { orden: "desc", limite: 10, ...paramsFecha({ desde, hasta }) }, signal })
+  return (r.ranking ?? []).map((x) => ({
+    titulo: x.pelicula,
+    entradas: x.entradas_vendidas,
+    porcentaje: Math.round(x.participacion ?? 0),
+  }))
+}
+
+/**
+ * Ocupación por función. Shape: [{ funcionId, pelicula, sala, fecha, ocupados, capacidad, porcentaje }].
+ */
+export async function reporteOcupacion({ signal, desde, hasta } = {}) {
+  if (!usaApi("reportes")) return ocupacionMock()
+  const { funciones } = await api.get("/reportes/ocupacion", { params: paramsFecha({ desde, hasta }), signal })
+  return (funciones ?? []).map((f) => ({
+    funcionId: f.funcion_id,
+    pelicula: f.pelicula,
+    sala: f.sala,
+    fecha: f.inicio,
+    ocupados: f.vendidos,
+    capacidad: f.capacidad,
+    porcentaje: Math.round(f.porcentaje ?? 0),
+  }))
+}
+
+/**
+ * Entradas por estado para el pie: { activas, usadas, anuladas, total }.
+ * Se arma con el resumen (vendidas = activas+usadas, anuladas) y asistencia (usadas).
+ */
+export async function reporteEntradas({ signal } = {}) {
+  if (!usaApi("reportes")) return entradasMock()
+  const [resumen, asistencia] = await Promise.all([
+    api.get("/reportes/resumen", { params: { dias: 730 }, signal }),
+    api.get("/reportes/asistencia", { signal }),
+  ])
+  const vendidas = resumen.entradas_vendidas ?? 0
+  const usadas = asistencia.global?.entradas_usadas ?? 0
+  const activas = Math.max(0, vendidas - usadas)
+  const anuladas = resumen.entradas_anuladas ?? 0
+  return { activas, usadas, anuladas, total: activas + usadas + anuladas }
+}
+
+/**
+ * Resumen de reservas del periodo: { total, expiradas, convertidas, canceladas, activas, tasaPerdida }.
+ */
+export async function reservasVencidas({ signal, desde, hasta } = {}) {
+  if (!usaApi("reportes")) return { total: 0, expiradas: 0, convertidas: 0, canceladas: 0, activas: 0, tasaPerdida: 0 }
+  const r = await api.get("/reportes/reservas-vencidas", { params: paramsFecha({ desde, hasta }), signal })
+  return {
+    total: r.total_reservas ?? 0,
+    expiradas: r.expiradas ?? 0,
+    convertidas: r.convertidas ?? 0,
+    canceladas: r.canceladas ?? 0,
+    activas: r.activas ?? 0,
+    tasaPerdida: r.tasa_perdida ?? 0,
+  }
+}
+
+/**
+ * Intentos de validación rechazados: { total, porResultado, ultimos: [{id, fecha, codigo, resultado, taquillero, detalle}] }.
+ */
+export async function intentosRechazados({ signal, desde, hasta } = {}) {
+  if (!usaApi("reportes")) return { total: 0, porResultado: {}, ultimos: [] }
+  const r = await api.get("/reportes/intentos-rechazados", { params: paramsFecha({ desde, hasta }), signal })
+  return {
+    total: r.total_rechazados ?? 0,
+    porResultado: r.por_resultado ?? {},
+    ultimos: (r.ultimos ?? []).map((u) => ({
+      id: u.id,
+      fecha: u.fecha,
+      codigo: u.codigo_leido,
+      resultado: u.resultado,
+      taquillero: u.taquillero,
+      detalle: u.detalle,
+    })),
+  }
+}
+
+/**
+ * Descarga un reporte en CSV usando fetch autenticado + blob.
+ * @param {"ventas"|"ocupacion"|"ranking"|"validaciones"} tipo
+ * @param {{desde?:string, hasta?:string}} [filtros]
+ * @throws {ApiError} 422 TIPO_INVALIDO
+ */
+export async function exportarReporte(tipo, { desde, hasta } = {}) {
+  const { blob, nombreArchivo } = await api.descargar("/reportes/exportar", {
+    params: { tipo, ...paramsFecha({ desde, hasta }) },
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = nombreArchivo ?? `sivec_${tipo}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+// ── Implementación simulada (cuando reportes no usa la API) ───────────────────
+
+async function metricasMock() {
+  await simularLatencia(500)
+  const [compras, funciones, usuarios] = await Promise.all([listarCompras(), mockFunciones(), mockUsuarios()])
+  return {
+    ventasTotales: compras.reduce((s, c) => s + (c.total ?? 0), 0),
+    entradasVendidas: compras.reduce((s, c) => s + (c.entradas?.length ?? 0), 0),
+    funcionesActivas: funciones.filter((f) => f.estado === "activa").length,
     usuariosRegistrados: usuarios.length,
     totalTransacciones: compras.length,
   }
 }
 
-/**
- * Ventas agrupadas por mes (últimos 9 meses) para el gráfico de líneas.
- * Como los datos mock son pocos, generamos una serie realista basada en el total.
- * @returns {Promise<{mes: string, ventas: number}[]>}
- */
-export async function ventasPorMes() {
+async function ventasPorMesMock() {
   await simularLatencia(400)
   const compras = await listarCompras()
-  const totalReal = compras.reduce((s, c) => s + (c.total ?? 0), 0)
-
-  // Serie de 9 meses: crecimiento simulado terminando en el total real del mes actual
-  const base = Math.max(totalReal, 200000)
+  const base = Math.max(compras.reduce((s, c) => s + (c.total ?? 0), 0), 200000)
   const factores = [0.45, 0.52, 0.6, 0.68, 0.75, 0.82, 0.9, 0.95, 1]
-  return factores.map((factor, i) => {
-    const fecha = subMonths(new Date(), 8 - i)
-    return {
-      mes: format(fecha, "MMM", { locale: es }),
-      ventas: Math.round(base * factor),
-    }
-  })
+  return factores.map((factor, i) => ({
+    mes: format(subMonths(new Date(), 8 - i), "MMM", { locale: es }),
+    ventas: Math.round(base * factor),
+  }))
 }
 
-/**
- * Funciones más vendidas (ranking por entradas vendidas).
- * @returns {Promise<{titulo: string, entradas: number, porcentaje: number}[]>}
- */
-export async function funcionesMasVendidas() {
+async function rankingMock() {
   await simularLatencia(400)
-  const [compras, funciones] = await Promise.all([
-    listarCompras(),
-    listarTodasFunciones(),
-  ])
-
-  // Contar entradas por película
+  const [compras, funciones] = await Promise.all([listarCompras(), mockFunciones()])
   const conteo = {}
   for (const compra of compras) {
     const funcion = funciones.find((f) => f.id === compra.funcionId)
     const titulo = funcion?.pelicula?.titulo ?? "Desconocida"
     conteo[titulo] = (conteo[titulo] ?? 0) + (compra.entradas?.length ?? 0)
   }
-
   const total = Object.values(conteo).reduce((s, n) => s + n, 0) || 1
   return Object.entries(conteo)
-    .map(([titulo, entradas]) => ({
-      titulo,
-      entradas,
-      porcentaje: Math.round((entradas / total) * 100),
-    }))
+    .map(([titulo, entradas]) => ({ titulo, entradas, porcentaje: Math.round((entradas / total) * 100) }))
     .sort((a, b) => b.entradas - a.entradas)
 }
 
-/**
- * Ocupación por función (vendidos+reservados / capacidad).
- * @returns {Promise<Object[]>}
- */
-export async function reporteOcupacion() {
+async function ocupacionMock() {
   await simularLatencia(600)
-  const funciones = await listarTodasFunciones()
-
+  const funciones = await mockFunciones()
   const resultado = []
-  for (const f of funciones.slice(0, 12)) { // limitar para no hacer demasiadas lecturas
-    const asientos = await obtenerAsientos(f.id)
+  for (const f of funciones.slice(0, 12)) {
+    const asientos = await mockAsientos(f.id)
     const ocupados = asientos.filter((a) => a.estado !== "disponible").length
     const capacidad = asientos.length || 1
     resultado.push({
-      funcionId: f.id,
-      pelicula: f.pelicula?.titulo ?? "—",
-      sala: f.sala?.nombre ?? "—",
-      fecha: f.fechaHora,
-      ocupados,
-      capacidad,
-      porcentaje: Math.round((ocupados / capacidad) * 100),
+      funcionId: f.id, pelicula: f.pelicula?.titulo ?? "—", sala: f.sala?.nombre ?? "—",
+      fecha: f.fechaHora, ocupados, capacidad, porcentaje: Math.round((ocupados / capacidad) * 100),
     })
   }
   return resultado
 }
 
-/**
- * Reporte de entradas: usadas vs vendidas, anuladas, activas.
- * @returns {Promise<Object>}
- */
-export async function reporteEntradas() {
+async function entradasMock() {
   await simularLatencia(400)
   const compras = await listarCompras()
-
   let activas = 0, usadas = 0, anuladas = 0
   for (const compra of compras) {
     for (const e of compra.entradas ?? []) {
-      if (e.estado === "activa")  activas++
+      if (e.estado === "activa") activas++
       else if (e.estado === "usada") usadas++
       else if (e.estado === "anulada") anuladas++
     }
   }
-  const total = activas + usadas + anuladas
-  return { activas, usadas, anuladas, total }
-}
-
-/**
- * Convierte un array de objetos a CSV y dispara la descarga.
- * @param {Object[]} filas
- * @param {string} nombreArchivo
- */
-export function exportarCSV(filas, nombreArchivo = "reporte.csv") {
-  if (!filas || filas.length === 0) return
-
-  const columnas = Object.keys(filas[0])
-  const encabezado = columnas.join(",")
-  const cuerpo = filas
-    .map((fila) =>
-      columnas
-        .map((col) => {
-          const valor = fila[col] ?? ""
-          // Escapar comillas y envolver si contiene coma
-          const str = String(valor).replace(/"/g, '""')
-          return /[",\n]/.test(str) ? `"${str}"` : str
-        })
-        .join(",")
-    )
-    .join("\n")
-
-  const csv = `${encabezado}\n${cuerpo}`
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.href = url
-  link.download = nombreArchivo
-  link.click()
-  URL.revokeObjectURL(url)
+  return { activas, usadas, anuladas, total: activas + usadas + anuladas }
 }

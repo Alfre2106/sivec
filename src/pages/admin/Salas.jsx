@@ -1,41 +1,63 @@
 /**
  * Salas.jsx — CRUD de salas (admin).
+ *
+ * La capacidad la calcula el backend (filas × columnas). Cambiar filas/columnas con
+ * funciones activas, o eliminar una sala con funciones, lo rechaza la API (SALA_CON_FUNCIONES);
+ * el mensaje se muestra tal cual.
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Plus, Pencil, Trash2, Building2 } from "lucide-react"
 import {
   listarSalas, crearSala, actualizarSala, eliminarSala,
 } from "@/services/salasService"
 import { useToast } from "@/components/ui/Toast"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
 import Modal  from "@/components/ui/Modal"
 import Button from "@/components/ui/Button"
 import Input  from "@/components/ui/Input"
-import Badge  from "@/components/ui/Badge"
 import Spinner from "@/components/ui/Spinner"
+import MensajeError from "@/components/ui/MensajeError"
 
 export default function Salas() {
   const { toast } = useToast()
   const [salas,    setSalas]    = useState([])
   const [cargando, setCargando] = useState(true)
+  const [error,    setError]    = useState(null)
 
   const [modalAbierto, setModalAbierto] = useState(false)
   const [editando,     setEditando]     = useState(null)
   const [form,         setForm]         = useState(formVacio())
   const [guardando,    setGuardando]    = useState(false)
   const [confirmar,    setConfirmar]    = useState(null) // sala a eliminar
+  const [eliminando,   setEliminando]   = useState(false)
+  const ctrl = useRef(null)
 
   function formVacio() {
-    return { nombre: "", filas: 6, columnas: 10, tipo: "estandar" }
+    return { nombre: "", filas: 6, columnas: 10 }
   }
 
-  const cargar = async () => setSalas(await listarSalas())
-  useEffect(() => { cargar().finally(() => setCargando(false)) }, [])
+  const cargar = useCallback(() => {
+    ctrl.current?.abort()
+    const c = new AbortController()
+    ctrl.current = c
+    setCargando(true)
+    setError(null)
+    listarSalas({ signal: c.signal })
+      .then((data) => { if (!c.signal.aborted) setSalas(data) })
+      .catch((e) => { if (!fueCancelada(e)) setError(mensajeDeError(e, "No pudimos cargar las salas.")) })
+      .finally(() => { if (!c.signal.aborted) setCargando(false) })
+  }, [])
+
+  useEffect(() => {
+    cargar()
+    return () => ctrl.current?.abort()
+  }, [cargar])
 
   const abrirCrear = () => { setEditando(null); setForm(formVacio()); setModalAbierto(true) }
   const abrirEditar = (s) => {
     setEditando(s)
-    setForm({ nombre: s.nombre, filas: s.filas, columnas: s.columnas, tipo: s.tipo })
+    setForm({ nombre: s.nombre, filas: s.filas, columnas: s.columnas })
     setModalAbierto(true)
   }
 
@@ -47,38 +69,37 @@ export default function Salas() {
     }
     setGuardando(true)
     try {
-      const datos = {
-        nombre: form.nombre.trim(),
-        filas: Number(form.filas),
-        columnas: Number(form.columnas),
-        tipo: form.tipo,
-      }
+      const datos = { nombre: form.nombre.trim(), filas: Number(form.filas), columnas: Number(form.columnas) }
       if (editando) { await actualizarSala(editando.id, datos); toast({ tipo: "exito", titulo: "Sala actualizada" }) }
       else { await crearSala(datos); toast({ tipo: "exito", titulo: "Sala creada" }) }
-      await cargar()
+      cargar()
       setModalAbierto(false)
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+      toast({ tipo: "error", titulo: "No se pudo guardar", mensaje: mensajeDeError(err, err.message) })
     } finally {
       setGuardando(false)
     }
   }
 
   const confirmarEliminar = async () => {
+    setEliminando(true)
     try {
       await eliminarSala(confirmar.id)
       toast({ tipo: "exito", titulo: "Sala eliminada" })
-      await cargar()
-    } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
-    } finally {
+      cargar()
       setConfirmar(null)
+    } catch (err) {
+      // 409 SALA_CON_FUNCIONES: no se puede borrar
+      toast({ tipo: "error", titulo: "No se pudo eliminar", mensaje: mensajeDeError(err, err.message) })
+    } finally {
+      setEliminando(false)
     }
   }
 
   const capacidadPreview = Number(form.filas || 0) * Number(form.columnas || 0)
 
   if (cargando) return <div className="flex justify-center py-20"><Spinner tamaño="lg" texto="Cargando salas..." /></div>
+  if (error) return <MensajeError mensaje={error} onReintentar={cargar} />
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,7 +122,6 @@ export default function Salas() {
               <div className="w-11 h-11 rounded-xl bg-primario-suave flex items-center justify-center">
                 <Building2 className="w-5 h-5 text-primario" aria-hidden="true" />
               </div>
-              <Badge variante={s.tipo === "vip" ? "primario" : "neutro"} className="capitalize">{s.tipo}</Badge>
             </div>
             <div>
               <h3 className="font-titulo font-bold text-gray-900 text-lg">{s.nombre}</h3>
@@ -130,20 +150,18 @@ export default function Salas() {
         <form onSubmit={guardar} className="flex flex-col gap-4">
           <Input etiqueta="Nombre de la sala" placeholder="Sala 3" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
           <div className="grid grid-cols-2 gap-3">
-            <Input etiqueta="Filas" tipo="number" min="1" max="26" value={form.filas} onChange={(e) => setForm({ ...form, filas: e.target.value })} />
-            <Input etiqueta="Columnas" tipo="number" min="1" max="30" value={form.columnas} onChange={(e) => setForm({ ...form, columnas: e.target.value })} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-cuerpo font-medium text-gray-700">Tipo</label>
-            <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })} className="input-sivec">
-              <option value="estandar">Estándar</option>
-              <option value="vip">VIP</option>
-            </select>
+            <Input etiqueta="Filas (1–26)" tipo="number" min="1" max="26" value={form.filas} onChange={(e) => setForm({ ...form, filas: e.target.value })} />
+            <Input etiqueta="Columnas (1–30)" tipo="number" min="1" max="30" value={form.columnas} onChange={(e) => setForm({ ...form, columnas: e.target.value })} />
           </div>
           {/* Preview de capacidad */}
           <div className="bg-primario-suave rounded-lg px-4 py-2 text-sm font-cuerpo text-primario-oscuro">
             Capacidad calculada: <strong>{capacidadPreview} asientos</strong>
           </div>
+          {editando && (
+            <p className="text-xs text-gray-400 font-cuerpo">
+              No se pueden cambiar filas o columnas si la sala tiene funciones activas.
+            </p>
+          )}
           <div className="flex gap-2 justify-end mt-1">
             <Button variante="fantasma" type="button" onClick={() => setModalAbierto(false)}>Cancelar</Button>
             <Button type="submit" cargando={guardando}>{editando ? "Guardar cambios" : "Crear sala"}</Button>
@@ -154,11 +172,11 @@ export default function Salas() {
       {/* Modal confirmar eliminación */}
       <Modal abierto={!!confirmar} onCerrar={() => setConfirmar(null)} titulo="Eliminar sala" tamaño="sm">
         <p className="text-sm text-gray-600 font-cuerpo mb-5">
-          ¿Seguro que deseas eliminar <strong>{confirmar?.nombre}</strong>? Esta acción no se puede deshacer.
+          ¿Seguro que deseas eliminar <strong>{confirmar?.nombre}</strong>? Solo es posible si no tiene funciones.
         </p>
         <div className="flex gap-2 justify-end">
           <Button variante="fantasma" onClick={() => setConfirmar(null)}>Cancelar</Button>
-          <Button variante="peligro" onClick={confirmarEliminar}>Eliminar</Button>
+          <Button variante="peligro" onClick={confirmarEliminar} cargando={eliminando}>Eliminar</Button>
         </div>
       </Modal>
     </div>

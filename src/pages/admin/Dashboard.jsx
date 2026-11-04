@@ -11,29 +11,42 @@ import { DollarSign, Ticket, Film, Users, RotateCcw } from "lucide-react"
 import {
   obtenerMetricasDashboard, ventasPorMes, funcionesMasVendidas,
 } from "@/services/reportesService"
+import { usaApi } from "@/services/config"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
 import { reiniciarTodo } from "@/services/almacenamiento"
 import StatCard from "@/components/StatCard"
 import Spinner  from "@/components/ui/Spinner"
 import Button   from "@/components/ui/Button"
 import Modal    from "@/components/ui/Modal"
+import MensajeError from "@/components/ui/MensajeError"
 import { formatearPrecio } from "@/utils/formato"
+
+const DATOS_REALES = usaApi("reportes")
 
 export default function Dashboard() {
   const [metricas,  setMetricas]  = useState(null)
   const [serieMes,  setSerieMes]  = useState([])
   const [ranking,   setRanking]   = useState([])
   const [cargando,  setCargando]  = useState(true)
+  const [error,     setError]     = useState(null)
   const [confirmarReinicio, setConfirmarReinicio] = useState(false)
 
-  useEffect(() => {
+  const cargar = () => {
+    const ctrl = new AbortController()
+    setCargando(true)
+    setError(null)
     Promise.all([
-      obtenerMetricasDashboard(),
-      ventasPorMes(),
-      funcionesMasVendidas(),
+      obtenerMetricasDashboard({ signal: ctrl.signal }),
+      ventasPorMes({ signal: ctrl.signal }),
+      funcionesMasVendidas({ signal: ctrl.signal }),
     ])
       .then(([m, s, r]) => { setMetricas(m); setSerieMes(s); setRanking(r) })
-      .finally(() => setCargando(false))
-  }, [])
+      .catch((e) => { if (!fueCancelada(e)) setError(mensajeDeError(e, "No pudimos cargar el panel.")) })
+      .finally(() => { if (!ctrl.signal.aborted) setCargando(false) })
+    return () => ctrl.abort()
+  }
+
+  useEffect(() => cargar(), [])
 
   // Reinicia los datos mock de fábrica (borra localStorage y recarga)
   const reiniciarDatos = () => {
@@ -42,6 +55,7 @@ export default function Dashboard() {
   }
 
   if (cargando) return <div className="flex justify-center py-20"><Spinner tamaño="lg" texto="Cargando dashboard..." /></div>
+  if (error) return <MensajeError mensaje={error} onReintentar={cargar} />
 
   return (
     <div className="flex flex-col gap-6">
@@ -51,10 +65,13 @@ export default function Dashboard() {
           <h1 className="font-titulo text-2xl font-bold text-gray-900">Panel de Administración</h1>
           <p className="text-gray-500 font-cuerpo text-sm mt-1">Resumen general del sistema</p>
         </div>
-        <Button variante="fantasma" tamaño="sm" onClick={() => setConfirmarReinicio(true)}>
-          <RotateCcw className="w-4 h-4" aria-hidden="true" />
-          Reiniciar datos de prueba
-        </Button>
+        {/* El reinicio solo tiene sentido con datos simulados */}
+        {!DATOS_REALES && (
+          <Button variante="fantasma" tamaño="sm" onClick={() => setConfirmarReinicio(true)}>
+            <RotateCcw className="w-4 h-4" aria-hidden="true" />
+            Reiniciar datos de prueba
+          </Button>
+        )}
       </div>
 
       {/* ── StatCards ───────────────────────────────────────────────────── */}

@@ -1,24 +1,28 @@
 /**
- * Funciones.jsx — CRUD de funciones (admin).
- * Crear, editar, desactivar (finalizar) y cancelar funciones.
+ * Funciones.jsx — Gestión de funciones (admin).
+ *
+ * Crear, editar y cancelar. Cancelar pide un motivo y muestra las compras afectadas
+ * (con el total a reembolsar) que devuelve la API. No hay "reactivar": una función
+ * cancelada no vuelve a activa.
  */
 
-import { useEffect, useState } from "react"
-import { Plus, Pencil, Ban, CheckCircle2 } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Plus, Pencil, Ban, AlertTriangle } from "lucide-react"
 import {
   listarTodasFunciones, crearFuncion, actualizarFuncion, cancelarFuncion,
 } from "@/services/funcionesAdminService"
 import { listarTodasPeliculas } from "@/services/peliculasAdminService"
 import { listarSalas } from "@/services/salasService"
 import { useToast } from "@/components/ui/Toast"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
 import Modal  from "@/components/ui/Modal"
 import Button from "@/components/ui/Button"
 import Input  from "@/components/ui/Input"
 import Badge  from "@/components/ui/Badge"
 import Poster from "@/components/Poster"
 import Spinner from "@/components/ui/Spinner"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import MensajeError from "@/components/ui/MensajeError"
+import { formatearDiaHora } from "@/utils/fechas"
 import { formatearPrecio } from "@/utils/formato"
 
 const VARIANTE_ESTADO = { activa: "exito", cancelada: "error", finalizada: "neutro" }
@@ -29,26 +33,41 @@ export default function Funciones() {
   const [peliculas, setPeliculas] = useState([])
   const [salas,     setSalas]     = useState([])
   const [cargando,  setCargando]  = useState(true)
+  const [error,     setError]     = useState(null)
 
   const [modalAbierto, setModalAbierto] = useState(false)
   const [editando,     setEditando]     = useState(null) // función en edición o null
   const [form,         setForm]         = useState(formVacio())
   const [guardando,    setGuardando]    = useState(false)
-  // Confirmación de cambio de estado: { funcion, nuevoEstado } | null
-  const [confirmarEstado, setConfirmarEstado] = useState(null)
+  // Cancelación: { funcion, motivo, afectadas, totalReembolsar, hecha } | null
+  const [cancelacion,  setCancelacion]  = useState(null)
+  const [cancelando,   setCancelando]   = useState(false)
+  const ctrl = useRef(null)
 
   function formVacio() {
     return { peliculaId: "", salaId: "", fecha: "", hora: "", precio: 20000 }
   }
 
-  const cargar = async () => {
-    const [f, p, s] = await Promise.all([
-      listarTodasFunciones(), listarTodasPeliculas(), listarSalas(),
+  const cargar = useCallback(() => {
+    ctrl.current?.abort()
+    const c = new AbortController()
+    ctrl.current = c
+    setCargando(true)
+    setError(null)
+    Promise.all([
+      listarTodasFunciones({ signal: c.signal }),
+      listarTodasPeliculas({ signal: c.signal }),
+      listarSalas({ signal: c.signal }),
     ])
-    setFunciones(f); setPeliculas(p); setSalas(s)
-  }
+      .then(([f, p, s]) => { if (!c.signal.aborted) { setFunciones(f); setPeliculas(p); setSalas(s) } })
+      .catch((e) => { if (!fueCancelada(e)) setError(mensajeDeError(e, "No pudimos cargar las funciones.")) })
+      .finally(() => { if (!c.signal.aborted) setCargando(false) })
+  }, [])
 
-  useEffect(() => { cargar().finally(() => setCargando(false)) }, [])
+  useEffect(() => {
+    cargar()
+    return () => ctrl.current?.abort()
+  }, [cargar])
 
   // ── Abrir modal ─────────────────────────────────────────────────────────
   const abrirCrear = () => {
@@ -58,13 +77,15 @@ export default function Funciones() {
   }
 
   const abrirEditar = (f) => {
-    const fecha = new Date(f.fechaHora)
+    // La fecha/hora para los inputs se arma en hora local del navegador a partir del ISO
+    const d = new Date(f.fechaHora)
+    const pad = (n) => String(n).padStart(2, "0")
     setEditando(f)
     setForm({
-      peliculaId: f.peliculaId,
-      salaId: f.salaId,
-      fecha: format(fecha, "yyyy-MM-dd"),
-      hora:  format(fecha, "HH:mm"),
+      peliculaId: String(f.peliculaId ?? ""),
+      salaId: String(f.salaId ?? ""),
+      fecha: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      hora:  `${pad(d.getHours())}:${pad(d.getMinutes())}`,
       precio: f.precio ?? 20000,
     })
     setModalAbierto(true)
@@ -79,6 +100,7 @@ export default function Funciones() {
     }
     setGuardando(true)
     try {
+      // La hora elegida es local; se envía como ISO con la zona del navegador
       const fechaHora = new Date(`${form.fecha}T${form.hora}:00`).toISOString()
       const datos = {
         peliculaId: form.peliculaId,
@@ -93,31 +115,39 @@ export default function Funciones() {
         await crearFuncion(datos)
         toast({ tipo: "exito", titulo: "Función creada" })
       }
-      await cargar()
+      cargar()
       setModalAbierto(false)
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+      toast({ tipo: "error", titulo: "No se pudo guardar", mensaje: mensajeDeError(err, err.message) })
     } finally {
       setGuardando(false)
     }
   }
 
-  // ── Acciones de estado (ejecutadas tras confirmar) ─────────────────────────
-  const aplicarCambioEstado = async () => {
-    const { funcion: f, nuevoEstado } = confirmarEstado
+  // ── Cancelar función con motivo ────────────────────────────────────────────
+  const abrirCancelar = (f) => setCancelacion({ funcion: f, motivo: "", afectadas: null, totalReembolsar: 0, hecha: false })
+
+  const confirmarCancelar = async () => {
+    if (!cancelacion.motivo.trim()) {
+      toast({ tipo: "advertencia", titulo: "Indica el motivo de la cancelación" })
+      return
+    }
+    setCancelando(true)
     try {
-      if (nuevoEstado === "cancelada") await cancelarFuncion(f.id)
-      else await actualizarFuncion(f.id, { estado: nuevoEstado })
-      toast({ tipo: "exito", titulo: `Función ${nuevoEstado}` })
-      await cargar()
+      const r = await cancelarFuncion(cancelacion.funcion.id, cancelacion.motivo.trim())
+      // Mostramos el resultado (compras afectadas + total) en el mismo modal
+      setCancelacion((c) => ({ ...c, afectadas: r.comprasAfectadas, totalReembolsar: r.totalReembolsar, entradasAnuladas: r.entradasAnuladas, hecha: true }))
+      toast({ tipo: "exito", titulo: "Función cancelada", mensaje: `${r.entradasAnuladas} entradas anuladas.` })
+      cargar()
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+      toast({ tipo: "error", titulo: "No se pudo cancelar", mensaje: mensajeDeError(err, err.message) })
     } finally {
-      setConfirmarEstado(null)
+      setCancelando(false)
     }
   }
 
   if (cargando) return <div className="flex justify-center py-20"><Spinner tamaño="lg" texto="Cargando funciones..." /></div>
+  if (error) return <MensajeError mensaje={error} onReintentar={cargar} />
 
   return (
     <div className="flex flex-col gap-6">
@@ -145,57 +175,51 @@ export default function Funciones() {
               </tr>
             </thead>
             <tbody>
-              {funciones.map((f) => (
-                <tr key={f.id} className="border-b border-gray-50 hover:bg-fondo-panel/50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {f.pelicula && (
-                        <Poster src={f.pelicula.poster} alt="" className="w-7 h-10 rounded object-cover object-top shrink-0" />
-                      )}
-                      <span className="font-semibold text-gray-800">{f.pelicula?.titulo ?? "—"}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{f.sala?.nombre ?? "—"}</td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                    {format(new Date(f.fechaHora), "d MMM yyyy · h:mm a", { locale: es })}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{formatearPrecio(f.precio ?? 0)}</td>
-                  <td className="px-4 py-3">
-                    <Badge variante={VARIANTE_ESTADO[f.estado] ?? "neutro"} className="capitalize">{f.estado}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => abrirEditar(f)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:bg-primario-suave hover:text-primario transition-colors"
-                        aria-label={`Editar función de ${f.pelicula?.titulo}`}
-                        title="Editar"
-                      >
-                        <Pencil className="w-4 h-4" aria-hidden="true" />
-                      </button>
-                      {f.estado === "activa" ? (
+              {funciones.map((f) => {
+                const editable = f.estado === "activa"
+                return (
+                  <tr key={f.id} className="border-b border-gray-50 hover:bg-fondo-panel/50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {f.pelicula && (
+                          <Poster src={f.pelicula.poster} alt="" className="w-7 h-10 rounded object-cover object-top shrink-0" />
+                        )}
+                        <span className="font-semibold text-gray-800">{f.pelicula?.titulo ?? "—"}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{f.sala?.nombre ?? "—"}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {formatearDiaHora(f.fechaHora)}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{formatearPrecio(f.precio ?? 0)}</td>
+                    <td className="px-4 py-3">
+                      <Badge variante={VARIANTE_ESTADO[f.estado] ?? "neutro"} className="capitalize">{f.estado}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setConfirmarEstado({ funcion: f, nuevoEstado: "cancelada" })}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-error transition-colors"
+                          onClick={() => abrirEditar(f)}
+                          disabled={!editable}
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-primario-suave hover:text-primario transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          aria-label={`Editar función de ${f.pelicula?.titulo}`}
+                          title={editable ? "Editar" : "Solo se editan funciones activas"}
+                        >
+                          <Pencil className="w-4 h-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          onClick={() => abrirCancelar(f)}
+                          disabled={!editable}
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-error transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                           aria-label={`Cancelar función de ${f.pelicula?.titulo}`}
-                          title="Cancelar"
+                          title={editable ? "Cancelar" : "Solo se cancelan funciones activas"}
                         >
                           <Ban className="w-4 h-4" aria-hidden="true" />
                         </button>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmarEstado({ funcion: f, nuevoEstado: "activa" })}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-green-50 hover:text-exito transition-colors"
-                          aria-label={`Reactivar función de ${f.pelicula?.titulo}`}
-                          title="Reactivar"
-                        >
-                          <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -247,36 +271,82 @@ export default function Funciones() {
         </form>
       </Modal>
 
-      {/* Modal confirmar cambio de estado */}
+      {/* Modal cancelar función con motivo + compras afectadas */}
       <Modal
-        abierto={!!confirmarEstado}
-        onCerrar={() => setConfirmarEstado(null)}
-        titulo={confirmarEstado?.nuevoEstado === "cancelada" ? "Cancelar función" : "Reactivar función"}
-        tamaño="sm"
+        abierto={!!cancelacion}
+        onCerrar={() => setCancelacion(null)}
+        titulo={cancelacion?.hecha ? "Función cancelada" : "Cancelar función"}
       >
-        <p className="text-sm text-gray-600 font-cuerpo mb-5">
-          {confirmarEstado?.nuevoEstado === "cancelada" ? (
-            <>
-              ¿Seguro que deseas <strong>cancelar</strong> la función de{" "}
-              <strong>{confirmarEstado?.funcion?.pelicula?.titulo}</strong>?
-              Las entradas vendidas de esta función quedarán <strong>anuladas</strong>.
-            </>
-          ) : (
-            <>
-              ¿Deseas <strong>reactivar</strong> la función de{" "}
-              <strong>{confirmarEstado?.funcion?.pelicula?.titulo}</strong>?
-            </>
-          )}
-        </p>
-        <div className="flex gap-2 justify-end">
-          <Button variante="fantasma" onClick={() => setConfirmarEstado(null)}>Cancelar</Button>
-          <Button
-            variante={confirmarEstado?.nuevoEstado === "cancelada" ? "peligro" : "primario"}
-            onClick={aplicarCambioEstado}
-          >
-            {confirmarEstado?.nuevoEstado === "cancelada" ? "Sí, cancelar" : "Sí, reactivar"}
-          </Button>
-        </div>
+        {cancelacion && !cancelacion.hecha && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <AlertTriangle className="w-5 h-5 text-error shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="text-sm text-red-700 font-cuerpo">
+                Vas a cancelar la función de <strong>{cancelacion.funcion.pelicula?.titulo}</strong>
+                {" "}({formatearDiaHora(cancelacion.funcion.fechaHora)}). Las entradas vendidas quedarán
+                <strong> anuladas</strong> y las reservas se liberarán. Esta acción no se puede deshacer.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-cuerpo font-medium text-gray-700">Motivo de la cancelación</label>
+              <textarea
+                value={cancelacion.motivo}
+                onChange={(e) => setCancelacion((c) => ({ ...c, motivo: e.target.value }))}
+                rows={3}
+                className="input-sivec resize-none"
+                placeholder="Ej: Falla del proyector"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variante="fantasma" onClick={() => setCancelacion(null)}>Volver</Button>
+              <Button variante="peligro" onClick={confirmarCancelar} cargando={cancelando}>Cancelar función</Button>
+            </div>
+          </div>
+        )}
+
+        {cancelacion?.hecha && (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-fondo-panel rounded-lg px-4 py-3">
+                <p className="text-xs text-gray-500 font-cuerpo uppercase tracking-wide">Entradas anuladas</p>
+                <p className="font-titulo font-extrabold text-xl text-gray-900">{cancelacion.entradasAnuladas}</p>
+              </div>
+              <div className="bg-fondo-panel rounded-lg px-4 py-3">
+                <p className="text-xs text-gray-500 font-cuerpo uppercase tracking-wide">Total a reembolsar</p>
+                <p className="font-titulo font-extrabold text-xl text-primario">{formatearPrecio(cancelacion.totalReembolsar)}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-cuerpo font-semibold text-gray-700 mb-2">
+                Compras afectadas ({cancelacion.afectadas?.length ?? 0})
+              </p>
+              {(!cancelacion.afectadas || cancelacion.afectadas.length === 0) ? (
+                <p className="text-sm text-gray-400 font-cuerpo">No había compras aprobadas para esta función.</p>
+              ) : (
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
+                  {cancelacion.afectadas.map((c) => (
+                    <div key={c.compraId} className="border border-gray-100 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-titulo font-semibold text-gray-800 text-sm">{c.cliente?.nombre ?? "—"}</p>
+                        <p className="text-xs text-gray-500 font-cuerpo">
+                          {c.numero} · {c.cantidadEntradas} entrada{c.cantidadEntradas !== 1 ? "s" : ""}
+                          {" · "}<span className="capitalize">{c.metodoPago}</span>
+                          {c.cliente?.documento ? ` · Doc: ${c.cliente.documento}` : ""}
+                        </p>
+                      </div>
+                      <span className="font-titulo font-bold text-primario text-sm shrink-0">{formatearPrecio(c.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={() => setCancelacion(null)}>Entendido</Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

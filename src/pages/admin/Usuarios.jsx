@@ -1,31 +1,42 @@
 /**
  * Usuarios.jsx — Gestión de usuarios (admin).
- * CRUD completo: listar, crear, editar, cambiar rol, activar/desactivar y eliminar.
+ *
+ * Listar, crear (solo taquillero o administrador), editar, cambiar rol y
+ * activar/desactivar. No hay borrado permanente: "Desactivar" deja al usuario sin
+ * acceso (DELETE en la API = activo:false) y se puede reactivar.
  */
 
-import { useEffect, useState } from "react"
-import { Plus, Search, UserCheck, UserX, Mail, Pencil, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Plus, Search, UserCheck, UserX, Mail, Pencil } from "lucide-react"
 import {
-  listarUsuarios, crearUsuario, actualizarUsuario, alternarActivoUsuario, eliminarUsuario,
+  listarUsuarios, crearUsuario, actualizarUsuario, desactivarUsuario, activarUsuario,
 } from "@/services/usuariosService"
 import { useAuth } from "@/context/AuthContext"
 import { useToast } from "@/components/ui/Toast"
+import { fueCancelada, mensajeDeError } from "@/services/apiClient"
 import Modal  from "@/components/ui/Modal"
 import Button from "@/components/ui/Button"
 import Input  from "@/components/ui/Input"
 import Badge  from "@/components/ui/Badge"
 import Spinner from "@/components/ui/Spinner"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import MensajeError from "@/components/ui/MensajeError"
+import EstadoVacio from "@/components/ui/EstadoVacio"
+import { formatearFechaMedia } from "@/utils/fechas"
 import { cn } from "@/utils/cn"
 
-const FORM_VACIO = { nombre: "", email: "", password: "123456", rol: "cliente", telefono: "", documento: "" }
+// Al crear solo se permiten taquillero y administrador (los clientes se registran solos).
+const FORM_VACIO = { nombre: "", email: "", password: "123456", rol: "taquillero" }
+const ROLES_CREABLES = [
+  { valor: "taquillero", etiqueta: "Taquillero" },
+  { valor: "admin",      etiqueta: "Administrador" },
+]
 
 export default function Usuarios() {
   const { usuario: usuarioActual } = useAuth()
   const { toast } = useToast()
   const [usuarios, setUsuarios] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [error,    setError]    = useState(null)
   const [busqueda, setBusqueda] = useState("")
   const [filtroRol, setFiltroRol] = useState("Todos")
 
@@ -33,16 +44,31 @@ export default function Usuarios() {
   const [editando, setEditando]         = useState(null)   // usuario en edición o null (crear)
   const [form, setForm]                 = useState(FORM_VACIO)
   const [guardando, setGuardando]       = useState(false)
-  const [confirmar, setConfirmar]       = useState(null)    // usuario a eliminar
   const [confirmarRol, setConfirmarRol] = useState(null)    // { usuario, nuevoRol }
   const [confirmarEstado, setConfirmarEstado] = useState(null) // usuario a activar/desactivar
+  const [procesando, setProcesando]     = useState(false)
+  const ctrl = useRef(null)
 
-  const cargar = async () => setUsuarios(await listarUsuarios())
-  useEffect(() => { cargar().finally(() => setCargando(false)) }, [])
+  const cargar = useCallback(() => {
+    ctrl.current?.abort()
+    const c = new AbortController()
+    ctrl.current = c
+    setCargando(true)
+    setError(null)
+    listarUsuarios({ signal: c.signal })
+      .then((data) => { if (!c.signal.aborted) setUsuarios(data) })
+      .catch((e) => { if (!fueCancelada(e)) setError(mensajeDeError(e, "No pudimos cargar los usuarios.")) })
+      .finally(() => { if (!c.signal.aborted) setCargando(false) })
+  }, [])
+
+  useEffect(() => {
+    cargar()
+    return () => ctrl.current?.abort()
+  }, [cargar])
 
   const filtrados = usuarios.filter((u) => {
     const q = busqueda.toLowerCase()
-    const coincide = u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+    const coincide = (u.nombre ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q)
     const rolOk = filtroRol === "Todos" || u.rol === filtroRol
     return coincide && rolOk
   })
@@ -59,9 +85,7 @@ export default function Usuarios() {
       nombre: u.nombre ?? "",
       email: u.email ?? "",
       password: "",            // vacío = no cambiar
-      rol: u.rol ?? "cliente",
-      telefono: u.telefono ?? "",
-      documento: u.documento ?? "",
+      rol: u.rol === "cliente" ? "cliente" : u.rol, // a un cliente no se le cambia el rol aquí
     })
     setModalAbierto(true)
   }
@@ -73,28 +97,32 @@ export default function Usuarios() {
       toast({ tipo: "advertencia", titulo: "Nombre y correo son requeridos" })
       return
     }
+    if (!editando && !form.password.trim()) {
+      toast({ tipo: "advertencia", titulo: "La contraseña es requerida" })
+      return
+    }
     setGuardando(true)
     try {
       if (editando) {
-        // En edición no enviamos password si quedó vacío
-        const datos = {
-          nombre: form.nombre.trim(),
-          email: form.email.trim().toLowerCase(),
-          rol: form.rol,
-          telefono: form.telefono,
-          documento: form.documento,
-        }
+        const datos = { nombre: form.nombre.trim(), email: form.email.trim().toLowerCase() }
+        // El rol solo se envía si es creable (no se degrada/ eleva a cliente desde aquí)
+        if (form.rol !== "cliente") datos.rol = form.rol
         if (form.password.trim()) datos.password = form.password
         await actualizarUsuario(editando.id, datos)
         toast({ tipo: "exito", titulo: "Usuario actualizado" })
       } else {
-        await crearUsuario({ ...form, email: form.email.trim().toLowerCase() })
+        await crearUsuario({
+          nombre: form.nombre.trim(),
+          email: form.email.trim().toLowerCase(),
+          password: form.password,
+          rol: form.rol,
+        })
         toast({ tipo: "exito", titulo: "Usuario creado" })
       }
-      await cargar()
+      cargar()
       setModalAbierto(false)
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+      toast({ tipo: "error", titulo: "Error", mensaje: mensajeDeError(err, err.message) })
     } finally {
       setGuardando(false)
     }
@@ -103,13 +131,15 @@ export default function Usuarios() {
   // ── Cambiar rol (tras confirmar) ───────────────────────────────────────────
   const aplicarCambioRol = async () => {
     const { usuario: u, nuevoRol } = confirmarRol
+    setProcesando(true)
     try {
       await actualizarUsuario(u.id, { rol: nuevoRol })
       toast({ tipo: "exito", titulo: `Rol actualizado a ${nuevoRol}` })
-      await cargar()
+      cargar()
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+      toast({ tipo: "error", titulo: "Error", mensaje: mensajeDeError(err, err.message) })
     } finally {
+      setProcesando(false)
       setConfirmarRol(null)
     }
   }
@@ -117,31 +147,22 @@ export default function Usuarios() {
   // ── Activar/desactivar (tras confirmar) ────────────────────────────────────
   const aplicarCambioEstado = async () => {
     const u = confirmarEstado
+    setProcesando(true)
     try {
-      await alternarActivoUsuario(u.id)
+      if (u.activo) await desactivarUsuario(u.id)
+      else await activarUsuario(u.id)
       toast({ tipo: "exito", titulo: u.activo ? "Usuario desactivado" : "Usuario activado" })
-      await cargar()
+      cargar()
     } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
+      toast({ tipo: "error", titulo: "Error", mensaje: mensajeDeError(err, err.message) })
     } finally {
+      setProcesando(false)
       setConfirmarEstado(null)
     }
   }
 
-  // ── Eliminar ─────────────────────────────────────────────────────────────
-  const confirmarEliminar = async () => {
-    try {
-      await eliminarUsuario(confirmar.id)
-      toast({ tipo: "exito", titulo: "Usuario eliminado" })
-      await cargar()
-    } catch (err) {
-      toast({ tipo: "error", titulo: "Error", mensaje: err.message })
-    } finally {
-      setConfirmar(null)
-    }
-  }
-
   if (cargando) return <div className="flex justify-center py-20"><Spinner tamaño="lg" texto="Cargando usuarios..." /></div>
+  if (error) return <MensajeError mensaje={error} onReintentar={cargar} />
 
   return (
     <div className="flex flex-col gap-6">
@@ -178,6 +199,9 @@ export default function Usuarios() {
       </div>
 
       {/* Tabla */}
+      {filtrados.length === 0 ? (
+        <EstadoVacio icono={<UserCheck />} titulo="Sin usuarios" descripcion="No hay usuarios que coincidan con el filtro." />
+      ) : (
       <div className="tarjeta overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm font-cuerpo">
@@ -191,72 +215,62 @@ export default function Usuarios() {
             <tbody>
               {filtrados.map((u) => {
                 const esMiCuenta = u.id === usuarioActual?.id
+                const esCliente = u.rol === "cliente"
                 return (
                   <tr key={u.id} className="border-b border-gray-50 hover:bg-fondo-panel/50 transition-colors">
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-degradado-violeta flex items-center justify-center font-titulo font-bold text-white text-xs shrink-0">
-                          {u.nombre.charAt(0).toUpperCase()}
-                        </div>
-                        <span className="font-semibold text-gray-800">
-                          {u.nombre}
-                          {esMiCuenta && <span className="ml-1 text-[10px] text-primario font-cuerpo">(tú)</span>}
-                        </span>
-                      </div>
+                      <span className="font-semibold text-gray-800">{u.nombre}</span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{u.email}</td>
                     <td className="px-4 py-3">
-                      <select
-                        value={u.rol}
-                        onChange={(e) => setConfirmarRol({ usuario: u, nuevoRol: e.target.value })}
-                        disabled={esMiCuenta}
-                        className="text-xs font-cuerpo font-semibold rounded-lg border border-gray-200 px-2 py-1 bg-white focus:ring-2 focus:ring-primario outline-none capitalize disabled:opacity-50 disabled:cursor-not-allowed"
-                        aria-label={`Rol de ${u.nombre}`}
-                        title={esMiCuenta ? "No puedes cambiar tu propio rol" : undefined}
-                      >
-                        <option value="cliente">cliente</option>
-                        <option value="taquillero">taquillero</option>
-                        <option value="admin">admin</option>
-                      </select>
+                      {/* El rol se cambia solo entre taquillero y admin; a un cliente no se le toca aquí */}
+                      {esCliente ? (
+                        <Badge variante="neutro" className="capitalize">cliente</Badge>
+                      ) : (
+                        <select
+                          value={u.rol}
+                          onChange={(e) => setConfirmarRol({ usuario: u, nuevoRol: e.target.value })}
+                          disabled={esMiCuenta}
+                          className="text-xs font-cuerpo font-semibold rounded-lg border border-gray-200 px-2 py-1 bg-white focus:ring-2 focus:ring-primario outline-none capitalize disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label={`Rol de ${u.nombre}`}
+                          title={esMiCuenta ? "No puedes cambiar tu propio rol" : undefined}
+                        >
+                          <option value="taquillero">taquillero</option>
+                          <option value="admin">admin</option>
+                        </select>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                      {u.fechaRegistro ? format(new Date(u.fechaRegistro), "d MMM yyyy", { locale: es }) : "—"}
+                      {u.fechaRegistro ? formatearFechaMedia(u.fechaRegistro) : "—"}
                     </td>
                     <td className="px-4 py-3">
                       <Badge variante={u.activo ? "exito" : "neutro"}>{u.activo ? "Activo" : "Inactivo"}</Badge>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        {/* Editar */}
-                        <button
-                          onClick={() => abrirEditar(u)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-primario-suave hover:text-primario transition-colors"
-                          aria-label={`Editar a ${u.nombre}`}
-                          title="Editar"
-                        >
-                          <Pencil className="w-4 h-4" aria-hidden="true" />
-                        </button>
-                        {/* Activar/desactivar */}
+                        {/* Editar (solo taquilleros/admins; los clientes no se editan aquí) */}
+                        {!esCliente && (
+                          <button
+                            onClick={() => abrirEditar(u)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:bg-primario-suave hover:text-primario transition-colors"
+                            aria-label={`Editar a ${u.nombre}`}
+                            title="Editar"
+                          >
+                            <Pencil className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                        )}
+                        {/* Activar/desactivar — no sobre la propia cuenta */}
                         <button
                           onClick={() => setConfirmarEstado(u)}
+                          disabled={esMiCuenta}
                           className={cn(
-                            "p-1.5 rounded-lg transition-colors",
+                            "p-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent",
                             u.activo ? "text-gray-400 hover:bg-amber-50 hover:text-advertencia" : "text-gray-400 hover:bg-green-50 hover:text-exito"
                           )}
                           aria-label={u.activo ? `Desactivar a ${u.nombre}` : `Activar a ${u.nombre}`}
-                          title={u.activo ? "Desactivar" : "Activar"}
+                          title={esMiCuenta ? "No puedes desactivar tu propia cuenta" : (u.activo ? "Desactivar" : "Activar")}
                         >
                           {u.activo ? <UserX className="w-4 h-4" aria-hidden="true" /> : <UserCheck className="w-4 h-4" aria-hidden="true" />}
-                        </button>
-                        {/* Eliminar — no permitido sobre la propia cuenta */}
-                        <button
-                          onClick={() => setConfirmar(u)}
-                          disabled={esMiCuenta}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-error transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                          aria-label={`Eliminar a ${u.nombre}`}
-                          title={esMiCuenta ? "No puedes eliminar tu propia cuenta" : "Eliminar"}
-                        >
-                          <Trash2 className="w-4 h-4" aria-hidden="true" />
                         </button>
                       </div>
                     </td>
@@ -267,6 +281,7 @@ export default function Usuarios() {
           </table>
         </div>
       </div>
+      )}
 
       {/* Modal crear/editar usuario */}
       <Modal
@@ -277,18 +292,15 @@ export default function Usuarios() {
         <form onSubmit={guardar} className="flex flex-col gap-4">
           <Input etiqueta="Nombre completo" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
           <Input etiqueta="Correo electrónico" tipo="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} icono={<Mail className="w-4 h-4" />} />
-          <div className="grid grid-cols-2 gap-3">
-            <Input etiqueta="Teléfono" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
-            <Input etiqueta="Documento" value={form.documento} onChange={(e) => setForm({ ...form, documento: e.target.value })} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-cuerpo font-medium text-gray-700">Rol</label>
-            <select value={form.rol} onChange={(e) => setForm({ ...form, rol: e.target.value })} className="input-sivec capitalize">
-              <option value="cliente">Cliente</option>
-              <option value="taquillero">Taquillero</option>
-              <option value="admin">Administrador</option>
-            </select>
-          </div>
+          {/* El rol solo se elige para taquilleros/admins; a un cliente editado no se le cambia */}
+          {form.rol !== "cliente" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-cuerpo font-medium text-gray-700">Rol</label>
+              <select value={form.rol} onChange={(e) => setForm({ ...form, rol: e.target.value })} className="input-sivec capitalize">
+                {ROLES_CREABLES.map((r) => <option key={r.valor} value={r.valor}>{r.etiqueta}</option>)}
+              </select>
+            </div>
+          )}
           <Input
             etiqueta={editando ? "Nueva contraseña (dejar vacío para no cambiar)" : "Contraseña inicial"}
             value={form.password}
@@ -302,18 +314,6 @@ export default function Usuarios() {
         </form>
       </Modal>
 
-      {/* Modal confirmar eliminación */}
-      <Modal abierto={!!confirmar} onCerrar={() => setConfirmar(null)} titulo="Eliminar usuario" tamaño="sm">
-        <p className="text-sm text-gray-600 font-cuerpo mb-5">
-          ¿Seguro que deseas eliminar a <strong>{confirmar?.nombre}</strong> ({confirmar?.email})?
-          Esta acción no se puede deshacer.
-        </p>
-        <div className="flex gap-2 justify-end">
-          <Button variante="fantasma" onClick={() => setConfirmar(null)}>Cancelar</Button>
-          <Button variante="peligro" onClick={confirmarEliminar}>Eliminar</Button>
-        </div>
-      </Modal>
-
       {/* Modal confirmar cambio de rol */}
       <Modal abierto={!!confirmarRol} onCerrar={() => setConfirmarRol(null)} titulo="Cambiar rol" tamaño="sm">
         <p className="text-sm text-gray-600 font-cuerpo mb-5">
@@ -324,7 +324,7 @@ export default function Usuarios() {
         </p>
         <div className="flex gap-2 justify-end">
           <Button variante="fantasma" onClick={() => setConfirmarRol(null)}>Cancelar</Button>
-          <Button onClick={aplicarCambioRol}>Sí, cambiar rol</Button>
+          <Button onClick={aplicarCambioRol} cargando={procesando}>Sí, cambiar rol</Button>
         </div>
       </Modal>
 
@@ -342,6 +342,7 @@ export default function Usuarios() {
           <Button
             variante={confirmarEstado?.activo ? "peligro" : "primario"}
             onClick={aplicarCambioEstado}
+            cargando={procesando}
           >
             {confirmarEstado?.activo ? "Sí, desactivar" : "Sí, activar"}
           </Button>
