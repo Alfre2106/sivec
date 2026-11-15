@@ -152,6 +152,69 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── Banner preventa Avengers Doomsday ───────────────────────── */}
+      <section
+        className="relative overflow-hidden bg-noche-oscuro"
+        aria-label="Próximo estreno: Avengers Doomsday"
+      >
+        {/* Fondo: póster con overlay fuerte */}
+        <div className="absolute inset-0" aria-hidden="true">
+          <img
+            src="/posters/avengers.jpg"
+            alt=""
+            className="w-full h-full object-cover object-top opacity-30"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-noche-oscuro via-noche-oscuro/85 to-noche-oscuro/40" />
+        </div>
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col md:flex-row items-center gap-8">
+          {/* Póster pequeño */}
+          <img
+            src="/posters/avengers.jpg"
+            alt="Póster de Avengers: Doomsday"
+            className="w-32 md:w-40 rounded-xl shadow-2xl shrink-0 object-cover aspect-[2/3]"
+          />
+
+          {/* Texto */}
+          <div className="flex flex-col gap-4 text-center md:text-left">
+            <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+              <span className="bg-amber-500/90 text-white text-xs font-titulo font-bold px-3 py-1 rounded-full uppercase tracking-widest">
+                🎟 Preventa Abierta
+              </span>
+              <span className="bg-white/10 text-white text-xs font-cuerpo px-3 py-1 rounded-full border border-white/20">
+                Estreno 17 de diciembre
+              </span>
+            </div>
+            <h2 className="font-titulo text-3xl sm:text-4xl font-extrabold text-white leading-tight">
+              Avengers:<br className="hidden sm:block" /> Doomsday
+            </h2>
+            <p className="text-gray-300 font-cuerpo text-sm max-w-md">
+              Los Vengadores se enfrentan a Doctor Doom en la batalla definitiva del universo Marvel.
+              Asegura tu asiento antes de que se agoten.
+            </p>
+            <div className="flex flex-wrap gap-3 justify-center md:justify-start">
+              <Button
+                tamaño="lg"
+                onClick={() => navigate("/cartelera")}
+                className="bg-gradient-to-r from-amber-500 to-orange-500 border-0 shadow-boton"
+                aria-label="Comprar preventa de Avengers Doomsday"
+              >
+                <span>🎟</span>
+                Comprar Preventa
+              </Button>
+              <Button
+                variante="fantasma"
+                tamaño="lg"
+                onClick={() => navigate("/cartelera")}
+                className="text-white border-white/40 hover:bg-white/10 hover:text-white"
+              >
+                Ver funciones →
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Características ──────────────────────────────────────────── */}
       <section className="bg-fondo-panel py-12" aria-label="Características del servicio">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

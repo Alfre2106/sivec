@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Search, SlidersHorizontal } from "lucide-react"
 import { listarPeliculas } from "@/services/peliculasService"
-import { funcionesPorPelicula } from "@/services/funcionesService"
+import { funcionesPorPelicula, listarFunciones } from "@/services/funcionesService"
 import { useCart } from "@/context/CartContext"
 import MovieCard from "@/components/MovieCard"
 import Spinner from "@/components/ui/Spinner"
@@ -38,6 +38,8 @@ export default function Cartelera() {
   const [cargandoFunc, setCargandoFunc] = useState(false)
   const [errorFunc, setErrorFunc]       = useState(null)
   const ctrlFunc = useRef(null)
+  // mapa peliculaId → fecha ISO de la función más próxima (para badge Próximamente)
+  const [proximaFuncionPorPelicula, setProximaFuncionPorPelicula] = useState({})
   const [error, setError]               = useState(null)
 
   // Carga/recarga la lista de películas
@@ -55,6 +57,21 @@ export default function Cartelera() {
         setError(mensajeDeError(e, "No pudimos cargar la cartelera."))
       })
       .finally(() => { if (!ctrl.signal.aborted) setCargando(false) })
+    // En paralelo cargamos TODAS las funciones para saber cuál es la más próxima
+    // de cada película y mostrar el badge "Próximamente" sin esperar a que el
+    // usuario abra el panel.
+    listarFunciones({ signal: ctrl.signal })
+      .then((funs) => {
+        const mapa = {}
+        for (const f of funs) {
+          if (!f.peliculaId) continue
+          if (!mapa[f.peliculaId] || f.fechaHora < mapa[f.peliculaId]) {
+            mapa[f.peliculaId] = f.fechaHora
+          }
+        }
+        if (!ctrl.signal.aborted) setProximaFuncionPorPelicula(mapa)
+      })
+      .catch(() => {}) // silencioso: no rompe nada si falla
   }, [])
 
   const cargarFunciones = useCallback((pelicula) => {
@@ -166,6 +183,7 @@ export default function Cartelera() {
             <MovieCard
               key={p.id}
               pelicula={p}
+              proximaFuncion={proximaFuncionPorPelicula[p.id]}
               onComprar={() => abrirFunciones(p)}
             />
           ))}

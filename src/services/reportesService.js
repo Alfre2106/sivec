@@ -77,6 +77,33 @@ export async function funcionesMasVendidas({ signal, desde, hasta } = {}) {
 }
 
 /**
+ * Ventas e ingresos por función (para agrupar por película en la pantalla).
+ * Shape: [{ funcionId, pelicula, sala, inicio, entradasVendidas, ingresos }]
+ */
+export async function ventasPorFuncion({ signal, desde, hasta } = {}) {
+  if (!usaApi("reportes")) return ventasPorFuncionMock()
+  const { funciones } = await api.get("/reportes/ventas-por-funcion", { params: paramsFecha({ desde, hasta }), signal })
+  return (funciones ?? []).map((f) => ({
+    funcionId: f.funcion_id,
+    pelicula: f.pelicula,
+    sala: f.sala,
+    inicio: f.inicio,
+    entradasVendidas: f.entradas_vendidas ?? 0,
+    ingresos: f.ingresos ?? 0,
+  }))
+}
+
+async function ventasPorFuncionMock() {
+  await simularLatencia(400)
+  const [compras, funciones] = await Promise.all([listarCompras(), mockFunciones()])
+  return funciones.map((f) => {
+    const cf = compras.filter((c) => c.funcionId === f.id)
+    const ent = cf.reduce((s, c) => s + (c.entradas?.length ?? 0), 0)
+    return { funcionId: f.id, pelicula: f.pelicula?.titulo ?? "—", sala: f.sala?.nombre ?? "—", inicio: f.fechaHora, entradasVendidas: ent, ingresos: ent * (f.precio ?? 0) }
+  })
+}
+
+/**
  * Ocupación por función. Shape: [{ funcionId, pelicula, sala, fecha, ocupados, capacidad, porcentaje }].
  */
 export async function reporteOcupacion({ signal, desde, hasta } = {}) {
